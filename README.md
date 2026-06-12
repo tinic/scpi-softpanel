@@ -8,6 +8,8 @@ It runs on an always-on LAN host, owns the instrument's single control session, 
 serves a live browser UI: real-time readout, function/range/NPLC controls, a trend
 chart, and a raw-SCPI console.
 
+![SCPI SoftPanel reading a live SDM3045X](docs/screenshot.png)
+
 ```
 browser (Vue 3)  ⇄  WebSocket  ⇄  Node/TS broker  ⇄  JSON-RPC/stdio  ⇄  Python+pyvisa  ⇄  instrument
                                    (all the logic)                      (the one VISA session)
