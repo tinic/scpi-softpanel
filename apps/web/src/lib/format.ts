@@ -39,3 +39,13 @@ export function formatValue(value: number, unit: string, digits = 5): Formatted 
   const scaled = abs / 10 ** prefix.exp
   return { sign, text: scaled.toPrecision(digits), unit: prefix.sym + unit }
 }
+
+/**
+ * Compact label for a range button, e.g. 0.2 V -> "200 mV", 1e8 Ω -> "100 MΩ".
+ * Voltage ranges stay in volts ("1000 V", not "1 kV") to match the front panel.
+ */
+export function formatRangeLabel(value: number, unit: string): string {
+  if (unit === 'V' && value >= 1000) return `${value} V`
+  const f = formatValue(value, unit, 6)
+  return `${Number.parseFloat(f.text)} ${f.unit}`
+}

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { FUNCTION_INFO, METER_FUNCTIONS, type MeterFunction } from '@scpi/shared'
+import { computed } from 'vue'
+import { FUNCTION_INFO, METER_FUNCTIONS, NPLC_CHOICES } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
+import { formatRangeLabel } from '@/lib/format'
 
 const store = useMeterStore()
 
@@ -10,114 +11,84 @@ const currentInfo = computed(() =>
   store.state?.function ? FUNCTION_INFO[store.state.function] : null,
 )
 
-const NPLC_PRESETS = [0.3, 1, 10, 100]
+// "V ⎓" -> letter + enlarged symbol; "Ω 2W", "Hz", "⊣⊢" render as-is.
+function splitShort(s: string): { pre: string; sym: string | null } {
+  const m = /^([A-Za-z]+) (\W+)$/.exec(s)
+  return m ? { pre: m[1], sym: m[2] } : { pre: s, sym: null }
+}
 
-// Local edit buffers that follow server state when it changes.
-const rangeInput = ref('')
-const intervalInput = ref(100)
-watch(
-  () => store.state?.range,
-  (r) => {
-    if (r && r !== 'AUTO') rangeInput.value = r
-  },
-)
-watch(
-  () => store.state?.intervalMs,
-  (ms) => {
-    if (ms) intervalInput.value = ms
-  },
-  { immediate: true },
-)
-
-function onFunction(e: Event) {
-  store.setFunction((e.target as HTMLSelectElement).value as MeterFunction)
-}
-function applyRange() {
-  if (rangeInput.value.trim()) store.setRange(rangeInput.value.trim())
-}
-function applyInterval() {
-  store.setInterval(Math.max(50, Math.min(60000, Math.round(intervalInput.value))))
-}
+const autoRange = computed(() => store.state?.autoRange ?? false)
+const activeRange = computed(() => {
+  const r = store.state?.range
+  return r && r !== 'AUTO' ? Number.parseFloat(r) : null
+})
 </script>
 
 <template>
   <div class="controls">
     <div class="row">
       <label>Function</label>
-      <select :value="store.state?.function ?? ''" @change="onFunction">
-        <option v-for="fn in functions" :key="fn" :value="fn">{{ FUNCTION_INFO[fn].label }}</option>
-      </select>
-    </div>
-
-    <div class="row">
-      <label>Range</label>
-      <div class="inline">
-        <label class="chk">
-          <input
-            type="checkbox"
-            :checked="store.state?.autoRange ?? false"
-            :disabled="!currentInfo?.supportsRange"
-            @change="store.setAutoRange(($event.target as HTMLInputElement).checked)"
-          />
-          auto
-        </label>
-        <input
-          v-model="rangeInput"
-          type="text"
-          placeholder="e.g. 2"
-          :disabled="!currentInfo?.supportsRange || (store.state?.autoRange ?? false)"
-          @keyup.enter="applyRange"
-        />
+      <div class="seg">
         <button
-          :disabled="!currentInfo?.supportsRange || (store.state?.autoRange ?? false)"
-          @click="applyRange"
+          v-for="fn in functions"
+          :key="fn"
+          :title="FUNCTION_INFO[fn].label"
+          :class="{ primary: store.state?.function === fn }"
+          @click="store.setFunction(fn)"
         >
-          Set
+          <template v-if="splitShort(FUNCTION_INFO[fn].short).sym"
+            >{{ splitShort(FUNCTION_INFO[fn].short).pre
+            }}<span class="sym">{{ splitShort(FUNCTION_INFO[fn].short).sym }}</span></template
+          >
+          <template v-else>{{ FUNCTION_INFO[fn].short }}</template>
         </button>
       </div>
     </div>
 
     <div class="row">
-      <label>NPLC</label>
-      <div class="inline nplc">
+      <label>Range</label>
+      <div v-if="currentInfo?.ranges" class="seg">
+        <button :class="{ primary: autoRange }" @click="store.setAutoRange(true)">Auto</button>
         <button
-          v-for="p in NPLC_PRESETS"
+          v-for="r in currentInfo.ranges"
+          :key="r"
+          :class="{ primary: !autoRange && activeRange === r }"
+          @click="store.setRange(String(r))"
+        >
+          {{ formatRangeLabel(r, currentInfo.unit) }}
+        </button>
+      </div>
+      <span v-else class="muted">auto</span>
+    </div>
+
+    <div class="row">
+      <label>NPLC</label>
+      <div v-if="currentInfo?.supportsNplc" class="seg">
+        <button
+          v-for="p in NPLC_CHOICES"
           :key="p"
-          :disabled="!currentInfo?.supportsNplc"
           :class="{ primary: store.state?.nplc === p }"
           @click="store.setNplc(p)"
         >
           {{ p }}
         </button>
-        <span v-if="!currentInfo?.supportsNplc" class="muted">n/a</span>
       </div>
+      <span v-else class="muted">n/a</span>
     </div>
 
     <div class="row">
       <label>Polling</label>
-      <div class="inline">
+      <div class="seg">
         <button
           :class="store.state?.polling ? 'danger' : 'primary'"
           @click="store.setPolling(!(store.state?.polling ?? false))"
         >
-          {{ store.state?.polling ? 'Stop' : 'Start' }}
+          {{ store.state?.polling ? '◼ Stop' : '▶ Run' }}
         </button>
-        <input
-          v-model.number="intervalInput"
-          type="number"
-          min="50"
-          max="60000"
-          step="50"
-          @change="applyInterval"
-        />
-        <span class="muted">ms</span>
-        <button @click="store.measureOnce()">Measure once</button>
+        <button class="wide" title="Single triggered reading" @click="store.measureOnce()">
+          Measure once
+        </button>
       </div>
-    </div>
-
-    <div class="row">
-      <label></label>
-      <button @click="store.refresh()">Refresh state</button>
     </div>
   </div>
 </template>
@@ -126,39 +97,42 @@ function applyInterval() {
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .row {
   display: grid;
-  grid-template-columns: 80px 1fr;
-  align-items: center;
+  grid-template-columns: 72px 1fr;
+  align-items: start;
   gap: 12px;
 }
 .row > label {
   color: var(--muted);
   font-size: 13px;
+  padding-top: 7px;
 }
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+/* Uniform column tracks so wrapped rows align into a keypad-like grid. */
+.seg {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
 }
-.inline input[type='text'],
-.inline input[type='number'] {
-  width: 90px;
+.seg button {
+  padding: 6px 4px;
+  white-space: nowrap;
 }
-.nplc button {
-  min-width: 52px;
+.seg button.wide {
+  grid-column: span 2;
 }
-.chk {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text);
+/* The AC/DC waveform marks read too small at text size; scale just the symbol. */
+.sym {
+  font-size: 1.3em;
+  line-height: 1;
+  margin-left: 5px;
+  vertical-align: -0.1em;
 }
 .muted {
   color: var(--muted);
   font-size: 12px;
+  line-height: 31px;
 }
 </style>

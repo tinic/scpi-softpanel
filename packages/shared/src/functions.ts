@@ -26,6 +26,8 @@ export interface FunctionInfo {
   id: MeterFunction
   /** Human label for the UI. */
   label: string
+  /** Short front-panel-style label for the function key grid. */
+  short: string
   /** Display unit. */
   unit: string
   /** `CONFigure` command that selects this function. */
@@ -36,116 +38,153 @@ export interface FunctionInfo {
   supportsNplc: boolean
   /** Whether a manual range can be set. */
   supportsRange: boolean
+  /**
+   * Selectable manual ranges in base units, ascending, or null when range is
+   * fixed/automatic. Probed from a real SDM3045X (2026-06-12) by stepping
+   * `SENS:<fn>:RANG` from below minimum and reading back the clamped value.
+   */
+  ranges: number[] | null
 }
+
+/**
+ * Integration times the SDM3045X actually accepts; anything else is silently
+ * clamped (e.g. NPLC 100 reads back as 10), verified against the instrument.
+ */
+export const NPLC_CHOICES = [0.3, 1, 10] as const
 
 export const FUNCTION_INFO: Record<MeterFunction, FunctionInfo> = {
   'VOLT:DC': {
     id: 'VOLT:DC',
     label: 'DC Voltage',
+    short: 'V ⎓',
     unit: 'V',
     conf: 'CONF:VOLT:DC',
     sense: 'VOLT:DC',
     supportsNplc: true,
     supportsRange: true,
+    ranges: [0.2, 2, 20, 200, 1000],
   },
   'VOLT:AC': {
     id: 'VOLT:AC',
     label: 'AC Voltage',
+    short: 'V ∿',
     unit: 'V',
     conf: 'CONF:VOLT:AC',
     sense: 'VOLT:AC',
     supportsNplc: false,
     supportsRange: true,
+    ranges: [0.2, 2, 20, 200, 750],
   },
   'CURR:DC': {
     id: 'CURR:DC',
     label: 'DC Current',
+    short: 'A ⎓',
     unit: 'A',
     conf: 'CONF:CURR:DC',
     sense: 'CURR:DC',
     supportsNplc: true,
     supportsRange: true,
+    ranges: [0.0002, 0.002, 0.02, 0.2, 2, 10],
   },
   'CURR:AC': {
     id: 'CURR:AC',
     label: 'AC Current',
+    short: 'A ∿',
     unit: 'A',
     conf: 'CONF:CURR:AC',
     sense: 'CURR:AC',
     supportsNplc: false,
     supportsRange: true,
+    ranges: [0.02, 0.2, 2, 10],
   },
   RES: {
     id: 'RES',
     label: 'Resistance (2W)',
+    short: 'Ω 2W',
     unit: 'Ω',
     conf: 'CONF:RES',
     sense: 'RES',
     supportsNplc: true,
     supportsRange: true,
+    ranges: [200, 2e3, 20e3, 200e3, 2e6, 10e6, 100e6],
   },
   FRES: {
     id: 'FRES',
     label: 'Resistance (4W)',
+    short: 'Ω 4W',
     unit: 'Ω',
     conf: 'CONF:FRES',
     sense: 'FRES',
     supportsNplc: true,
     supportsRange: true,
+    ranges: [200, 2e3, 20e3, 200e3, 2e6, 10e6, 100e6],
   },
   CAP: {
     id: 'CAP',
     label: 'Capacitance',
+    short: '⊣⊢',
     unit: 'F',
     conf: 'CONF:CAP',
     sense: 'CAP',
     supportsNplc: false,
     supportsRange: true,
+    ranges: [2e-9, 20e-9, 200e-9, 2e-6, 20e-6, 200e-6, 10e-3],
   },
   FREQ: {
     id: 'FREQ',
     label: 'Frequency',
+    short: 'Hz',
     unit: 'Hz',
     conf: 'CONF:FREQ',
     sense: 'FREQ',
     supportsNplc: false,
     supportsRange: false,
+    ranges: null,
   },
   PER: {
     id: 'PER',
     label: 'Period',
+    short: '1/f',
     unit: 's',
     conf: 'CONF:PER',
     sense: 'PER',
     supportsNplc: false,
     supportsRange: false,
+    ranges: null,
   },
   CONT: {
     id: 'CONT',
     label: 'Continuity',
+    short: '◗))',
     unit: 'Ω',
     conf: 'CONF:CONT',
     sense: null,
     supportsNplc: false,
     supportsRange: false,
+    ranges: null,
   },
   DIOD: {
     id: 'DIOD',
     label: 'Diode',
+    short: '─▶|─',
     unit: 'V',
     conf: 'CONF:DIOD',
     sense: null,
     supportsNplc: false,
     supportsRange: false,
+    ranges: null,
   },
   TEMP: {
     id: 'TEMP',
     label: 'Temperature',
+    short: '°C',
     unit: '°C',
     conf: 'CONF:TEMP',
+    // The SDM3045X rejects SENS:TEMP:NPLC? (-113 Undefined header), so no NPLC here.
     sense: 'TEMP',
-    supportsNplc: true,
+    supportsNplc: false,
     supportsRange: false,
+    ranges: null,
   },
 }
 

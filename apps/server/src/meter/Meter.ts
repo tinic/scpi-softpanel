@@ -125,7 +125,9 @@ export class Meter extends EventEmitter {
       throw new Error(`NPLC not applicable for ${this.state.function ?? 'unknown function'}`)
     }
     await this.command(`SENS:${info.sense}:NPLC ${nplc}`)
-    this.patch({ nplc })
+    // Read back: the instrument clamps out-of-range values (e.g. 100 -> 10).
+    const actual = await this.queryNum(`SENS:${info.sense}:NPLC?`)
+    this.patch({ nplc: actual ?? nplc })
   }
 
   async setRange(range: string): Promise<void> {
@@ -138,7 +140,9 @@ export class Meter extends EventEmitter {
       this.patch({ autoRange: true, range: 'AUTO' })
     } else {
       await this.command(`SENS:${info.sense}:RANG ${range}`)
-      this.patch({ autoRange: false, range })
+      // Read back the range the instrument actually selected (it clamps).
+      const actual = await this.queryNum(`SENS:${info.sense}:RANG?`)
+      this.patch({ autoRange: false, range: actual != null ? String(actual) : range })
     }
   }
 
@@ -174,6 +178,9 @@ export class Meter extends EventEmitter {
       return reply
     }
     await this.bridge.write(cmd)
+    // A bare write may have changed function/range/NPLC; re-read so the panel
+    // stays truthful without a manual refresh control.
+    await this.refreshConfig()
     return null
   }
 

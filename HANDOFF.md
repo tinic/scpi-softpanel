@@ -89,12 +89,39 @@ All in `apps/web/`:
 - **Design polish pass (2026-06-12, user asked for less "amateurish")**: unit in the big
   display is 38px Iosevka accent (was 24px sans); stats row sits on a hairline top
   border; status bar items are **pills** and the raw IDN string was replaced by the
-  parsed model name (`StatusBar.vue` splits IDN on commas, full IDN on hover); NPLC
-  preset buttons have `min-width: 52px` (uniform); card padding 20px; visible
-  `:focus-visible` ring on buttons.
+  parsed model name (`StatusBar.vue` splits IDN on commas, full IDN on hover); card
+  padding 20px; visible `:focus-visible` ring on buttons.
+- **Controls = front-panel keypad (2026-06-12, user-driven rework)**: Function is a
+  symbol button grid (V⎓ V∿ A⎓ A∿ Ω2W Ω4W ⊣⊢ Hz 1/f ◗)) ─▶|─ °C, full names in
+  tooltips); Range is Auto + per-function preset buttons; NPLC presets come from shared
+  `NPLC_CHOICES`. **Removed:** Refresh-state button (broker auto-refreshes after raw
+  console writes — see `Meter.raw`), the poll-interval input (env default 100 ms is
+  fine), and the free-text range field. All `.seg` rows share a
+  `repeat(auto-fill, minmax(64px, 1fr))` grid so wrapped rows align like a keypad.
+- **Fonts (all OFL, embedded in `assets/fonts/`)**: **Noto Sans** 400/600/700 is the
+  app-wide UI font; **Iosevka ExtraBold** stays exclusively on measurement values
+  (`.mag`/`.sv`/`.unit`); **JuliaMono** serves ONLY the instrument symbols via
+  `unicode-range: U+2393, U+223F, U+22A2-22A3, U+2500, U+25B6, U+25D7, U+25FC`
+  (family 'Tech Symbols', first in the root stack). U+2393 (DC ⎓) is missing from
+  Iosevka, Noto Sans Symbols 2, and most system fonts — JuliaMono is the reason
+  that glyph renders. Symbol picks were screenshot-compared in /tmp/sym-test.html.
+- **Stats are per-function**: min/avg/max only aggregate readings whose `function`
+  matches the current one (a function switch used to relabel old volts as Ω).
+
+### Instrument facts probed from the real SDM3045X (2026-06-12)
+
+These live in `packages/shared/src/functions.ts` (`FUNCTION_INFO[fn].ranges`,
+`NPLC_CHOICES`) — don't re-derive from datasheet memory; the meter was probed by
+stepping `SENS:<fn>:RANG` and reading back:
+
+- DCV 200mV/2/20/200/1000V · ACV …/750V · DCI 200µA…2A,10A · ACI 20mA…2A,10A ·
+  RES/FRES 200Ω…2MΩ,**10MΩ**,100MΩ · CAP 2nF…200µF,**10mF**
+- **NPLC: only 0.3 / 1 / 10.** NPLC 100 is silently clamped to 10 (this is why
+  `Meter.setNplc/setRange` read back instead of trusting the patch).
+- `SENS:TEMP:NPLC?` errors (-113) → TEMP has `supportsNplc: false`.
 
 All of the above are **visually verified** against the live app (2026-06-12), including
-the 720px single-column layout.
+the 720px single-column layout and live function/range switching (DCV↔Ω2W).
 
 ## Playwright / visual self-verification
 

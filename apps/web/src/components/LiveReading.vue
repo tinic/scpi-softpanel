@@ -27,9 +27,11 @@ function clearStats() {
 }
 
 const stats = computed(() => {
-  // min/max/avg over the in-range window since the last clear
+  // min/max/avg over the in-range window since the last clear; only readings from
+  // the current function count, or a function switch would mix incompatible units.
+  const fn = store.lastReading?.function
   const vals = store.readings
-    .filter((r) => Number.isFinite(r.value) && r.ts >= statsSince.value)
+    .filter((r) => r.function === fn && Number.isFinite(r.value) && r.ts >= statsSince.value)
     .map((r) => r.value)
   if (vals.length === 0) return null
   const min = Math.min(...vals)

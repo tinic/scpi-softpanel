@@ -31,4 +31,23 @@ describe('FUNCTION_INFO', () => {
       expect(info.conf.startsWith('CONF')).toBe(true)
     }
   })
+  it('has a short front-panel label everywhere', () => {
+    for (const info of Object.values(FUNCTION_INFO)) {
+      expect(info.short.length).toBeGreaterThan(0)
+      expect(info.short.length).toBeLessThanOrEqual(5)
+    }
+  })
+  it('lists ascending ranges exactly when a manual range is settable', () => {
+    for (const info of Object.values(FUNCTION_INFO)) {
+      if (info.supportsRange) {
+        expect(info.ranges).not.toBeNull()
+        expect(info.ranges!.length).toBeGreaterThan(1)
+        for (let i = 1; i < info.ranges!.length; i++) {
+          expect(info.ranges![i]).toBeGreaterThan(info.ranges![i - 1])
+        }
+      } else {
+        expect(info.ranges).toBeNull()
+      }
+    }
+  })
 })
