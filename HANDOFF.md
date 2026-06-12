@@ -1,0 +1,128 @@
+# Session handoff — scpi-softpanel
+
+Living context so a fresh Claude session can continue without re-deriving anything.
+Last updated: 2026-06-12.
+
+## What this is
+
+A self-built browser control panel for a **Siglent SDM3045X** bench multimeter (raw
+SCPI on TCP 5025, VXI-11 on 111, **no built-in web UI**). Architecture:
+
+```
+Vue 3 + Vite + TS (apps/web)  ⇄ WebSocket ⇄  Node + Fastify + TS broker (apps/server)
+                                              (all logic: poll, state, reconnect, fan-out, ring history)
+                                                   ⇄ JSON-RPC/stdio ⇄ Python+pyvisa (bridge/, owns the 1 VISA session)
+```
+
+Shared zod contracts in `packages/shared`. See `README.md` for the full overview.
+
+## Status
+
+**Milestone 1 (skeleton + working live vertical slice) is COMPLETE and verified against
+the real instrument.** Live readings, function/range/NPLC controls, trend chart, and a
+raw-SCPI console all work browser↔meter. Full pipeline is green:
+`pnpm typecheck · lint · test · build · format` + `python -m py_compile bridge/bridge.py`.
+
+**Visual verification is DONE (2026-06-12):** all blind UI edits from the previous
+session checked out in headless-Chromium screenshots against the live app — Iosevka
+value display, centering, stats/clear-button alignment, collapsibles (console closed,
+trend open). One fix made: Trend y-axis tick labels all collapsed to the same string
+at µV-level spreads; `TrendChart.vue` now derives tick decimals from the tick
+increment (`yTickValues`) and the y-axis gutter is 64px.
+
+Initial commit made on `main`. Remote is `git@github.com:tinic/scpi-softpanel.git` —
+**not pushed yet**; push when the user wants it on GitHub.
+
+## Environment (host: playhouse2)
+
+- Linux/Proxmox host, LAN IP **192.168.1.184**. Meter at **192.168.1.166** (single
+  control session only — never open two connections at once).
+- **No passwordless sudo.** Install user-space only. (`apt` is available but prompts for a password.)
+- **pnpm** pinned to **9.12.0** via `packageManager` in package.json (Node 20.19's bundled
+  corepack can't run pnpm 11 — `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`). The shim is at
+  `~/.local/bin/pnpm` (already on PATH).
+- **Python bridge venv** at `bridge/.venv` (Python 3.13, pyvisa 1.16.2 + pyvisa-py 0.8.1).
+- Harness quirk: **foreground `sleep` is blocked** — use background tasks / until-loops.
+
+## Run / verify
+
+```bash
+pnpm dev                            # Vite :5173 (proxies /api + /ws) + broker :8080
+pnpm --filter @scpi/server start    # prod: broker serves built UI + API + WS on :8080
+# view at http://playhouse2:8080  (or :5173 in dev)
+
+pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm format
+```
+
+The broker spawns the bridge, connects, and auto-starts polling. Because the meter is
+single-session, **don't run two broker/dev instances at once** — they'll fight for it.
+
+## UI customizations already made (don't re-derive / lose these)
+
+All in `apps/web/`:
+
+- **Iosevka ExtraBold embedded**: `src/assets/fonts/iosevka-extrabold.woff2` (full
+  ~995 KB file — user explicitly chose NOT to subset). `@font-face` (weight 800) in
+  `src/style.css`. Applied to the big value (`LiveReading.vue` `.mag`/`.num`) and the
+  min/avg/max stat values (`.sv`).
+- **Value font size = 96px** (doubled from 48).
+- **Sign in a fixed-width 1ch column** so digits don't shift when the reading crosses
+  zero. `lib/format.ts` `formatValue()` returns `{ sign, text, unit }` separately.
+- **Poll interval default = 100ms** (`apps/server/src/config.ts`, `.env.example`,
+  `ControlPanel.vue` `intervalInput`). NOTE: effective rate is gated by NPLC — at NPLC 10
+  a `READ?` takes ~167–200ms, so drop NPLC to 1/0.3 for true 10Hz.
+- **Clear (↺) button** for min/avg/max in `LiveReading.vue`: advances a `statsSince`
+  marker so stats re-accumulate. Placed as a stats column with an empty label so it
+  lines up with the values row.
+- **Collapsible sections** via `components/CollapsibleSection.vue` (clickable header +
+  rotating chevron, `defaultOpen` prop). **SCPI Console collapsed by default**
+  (`:default-open="false"`); **Trend collapsible**, open by default. `TrendChart.vue`
+  has a zero-width resize guard for collapse/expand.
+- **LiveReading panel is centered** (was left-crammed).
+
+- **Trend y-axis adaptive tick precision** (`TrendChart.vue` `yTickValues`): decimals
+  derived from the tick increment so µV-scale spreads get distinct labels; axis size 64.
+
+All of the above are **visually verified** against the live app (2026-06-12).
+
+## Playwright / visual self-verification
+
+- MCP config (in `~/.claude.json`, project-scoped): `npx @playwright/mcp@latest
+  --browser chromium`. The `--browser chromium` flag is REQUIRED — the default `chrome`
+  channel isn't installed and can't be (no sudo). Chromium rev **1223** lives in
+  `~/.cache/ms-playwright`; headless launch works.
+- MCP server args are fixed at session startup — if the MCP errors with "Chromium
+  distribution 'chrome' is not found", the session predates the config fix.
+- **Working fallback (proven):** drive playwright-core directly via node. A matching
+  playwright-core 1.60 (chromium rev 1223) is in the npx cache at
+  `~/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core` (the other npx copy wants
+  rev 1226 — don't use it). Script pattern saved at `/tmp/shot.mjs` last session:
+  launch headless, viewport 1440×1000, goto + networkidle + ~1.5s wait for WS, screenshot.
+- To screenshot the app: the broker must be running (`pnpm --filter @scpi/server start`,
+  holds the single meter session — check `ss -tlnp | grep 8080` first; don't start a
+  second one), then point the browser at `http://localhost:8080`.
+
+## Likely next steps
+
+1. **Push to GitHub** when the user asks (remote configured, nothing pushed).
+2. Possible follow-ups: SQLite persistence behind the `ReadingStore` interface (currently
+   in-memory ring); build/run the Docker image (Dockerfile ready; Docker not installed here).
+
+## File map (source)
+
+```
+packages/shared/src/{functions,messages,index}.ts   contracts + SDM function metadata
+apps/server/src/
+  config.ts            env config (defaults: meter .166, poll 100ms, port 8080)
+  bridge/BridgeClient.ts   spawns+supervises python, serialized JSON-RPC, auto-respawn
+  meter/Meter.ts       SCPI translation, state, reconnect
+  meter/Poller.ts      self-rescheduling poll loop (NPLC-safe)
+  store/ReadingStore.ts    ReadingStore interface + RingReadingStore (in-memory)
+  ws/hub.ts            WS client registry + validated fan-out
+  index.ts             wiring + Fastify HTTP/WS + static serve
+apps/web/src/
+  stores/meter.ts      Pinia WS client (state + readings ring + console)
+  lib/format.ts        engineering-notation formatter (sign split out)
+  components/{LiveReading,ControlPanel,TrendChart,RawConsole,StatusBar,CollapsibleSection}.vue
+bridge/bridge.py       pyvisa JSON-RPC executor (owns the single session)
+```

@@ -1,0 +1,34 @@
+{
+  "name": "scpi-softpanel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser control panel for SCPI bench instruments (Siglent SDM3045X), via a Node/TS broker and a thin Python+pyvisa bridge.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c green,magenta \"pnpm --filter @scpi/server run dev\" \"pnpm --filter @scpi/web run dev\"",
+    "build": "pnpm --filter @scpi/web run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node --import tsx apps/server/src/index.ts"
+  },
+  "devDependencies": {
+    "@vue/eslint-config-prettier": "^10.1.0",
+    "@vue/eslint-config-typescript": "^14.2.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-vue": "^9.32.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
