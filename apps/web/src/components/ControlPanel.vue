@@ -79,7 +79,7 @@ function applyInterval() {
 
     <div class="row">
       <label>NPLC</label>
-      <div class="inline">
+      <div class="inline nplc">
         <button
           v-for="p in NPLC_PRESETS"
           :key="p"
@@ -147,6 +147,9 @@ function applyInterval() {
 .inline input[type='text'],
 .inline input[type='number'] {
   width: 90px;
+}
+.nplc button {
+  min-width: 52px;
 }
 .chk {
   display: inline-flex;

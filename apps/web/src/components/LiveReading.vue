@@ -40,7 +40,6 @@ const stats = computed(() => {
     min: formatValue(min, unit),
     max: formatValue(max, unit),
     avg: formatValue(avg, unit),
-    n: vals.length,
   }
 })
 </script>
@@ -68,14 +67,7 @@ const stats = computed(() => {
         <label>max</label>
         <span class="sv">{{ stats.max.sign }}{{ stats.max.text }} {{ stats.max.unit }}</span>
       </div>
-      <div class="stat">
-        <label>n</label>
-        <span class="sv">{{ stats.n }}</span>
-      </div>
-      <div class="stat reset">
-        <label aria-hidden="true">&nbsp;</label>
-        <button class="clear-stats" title="Clear min / avg / max" @click="clearStats">↺</button>
-      </div>
+      <button class="clear-stats" title="Clear min / avg / max" @click="clearStats">↺</button>
     </div>
   </div>
 </template>
@@ -119,7 +111,9 @@ const stats = computed(() => {
   text-align: center;
 }
 .unit {
-  font-size: 24px;
+  font-family: 'Iosevka', ui-monospace, monospace;
+  font-weight: 800;
+  font-size: 38px;
   color: var(--accent);
 }
 .value.overload .mag {
@@ -127,8 +121,11 @@ const stats = computed(() => {
 }
 .stats {
   display: flex;
-  align-items: flex-start;
-  gap: 26px;
+  align-items: flex-end;
+  gap: 28px;
+  margin-top: 6px;
+  padding: 14px 32px 0;
+  border-top: 1px solid var(--border);
 }
 .stat {
   display: flex;
@@ -150,8 +147,14 @@ const stats = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 .clear-stats {
-  padding: 3px 9px;
-  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 13px;
   line-height: 1;
   color: var(--muted);
 }

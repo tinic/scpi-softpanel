@@ -72,8 +72,11 @@ All in `apps/web/`:
   `ControlPanel.vue` `intervalInput`). NOTE: effective rate is gated by NPLC — at NPLC 10
   a `READ?` takes ~167–200ms, so drop NPLC to 1/0.3 for true 10Hz.
 - **Clear (↺) button** for min/avg/max in `LiveReading.vue`: advances a `statsSince`
-  marker so stats re-accumulate. Placed as a stats column with an empty label so it
-  lines up with the values row.
+  marker so stats re-accumulate. Rendered as a 22px circular ghost button inline at the
+  end of the stats row (`align-items: flex-end` aligns it with the value line).
+- **No N stat.** It was removed (user request): the web readings ring caps at 3600
+  entries (`MAX_READINGS`), so N saturated at 3600 and was meaningless. Note min/avg/max
+  share the same window — they cover at most the last 3600 readings since clear.
 - **Collapsible sections** via `components/CollapsibleSection.vue` (clickable header +
   rotating chevron, `defaultOpen` prop). **SCPI Console collapsed by default**
   (`:default-open="false"`); **Trend collapsible**, open by default. `TrendChart.vue`
@@ -81,14 +84,22 @@ All in `apps/web/`:
 - **LiveReading panel is centered** (was left-crammed).
 
 - **Trend y-axis adaptive tick precision** (`TrendChart.vue` `yTickValues`): decimals
-  derived from the tick increment so µV-scale spreads get distinct labels; axis size 64.
+  derived from the tick increment so µV-scale spreads get distinct labels; axis size 64;
+  tick labels in 11px monospace on both axes.
+- **Design polish pass (2026-06-12, user asked for less "amateurish")**: unit in the big
+  display is 38px Iosevka accent (was 24px sans); stats row sits on a hairline top
+  border; status bar items are **pills** and the raw IDN string was replaced by the
+  parsed model name (`StatusBar.vue` splits IDN on commas, full IDN on hover); NPLC
+  preset buttons have `min-width: 52px` (uniform); card padding 20px; visible
+  `:focus-visible` ring on buttons.
 
-All of the above are **visually verified** against the live app (2026-06-12).
+All of the above are **visually verified** against the live app (2026-06-12), including
+the 720px single-column layout.
 
 ## Playwright / visual self-verification
 
 - MCP config (in `~/.claude.json`, project-scoped): `npx @playwright/mcp@latest
-  --browser chromium`. The `--browser chromium` flag is REQUIRED — the default `chrome`
+--browser chromium`. The `--browser chromium` flag is REQUIRED — the default `chrome`
   channel isn't installed and can't be (no sudo). Chromium rev **1223** lives in
   `~/.cache/ms-playwright`; headless launch works.
 - MCP server args are fixed at session startup — if the MCP errors with "Chromium

@@ -43,11 +43,17 @@ function options(width: number): uPlot.Options {
     height: 280,
     scales: { x: { time: true } },
     axes: [
-      { stroke: '#8b949e', grid: { stroke: '#21262d', width: 1 }, ticks: { stroke: '#30363d' } },
       {
         stroke: '#8b949e',
         grid: { stroke: '#21262d', width: 1 },
         ticks: { stroke: '#30363d' },
+        font: '11px ui-monospace, monospace',
+      },
+      {
+        stroke: '#8b949e',
+        grid: { stroke: '#21262d', width: 1 },
+        ticks: { stroke: '#30363d' },
+        font: '11px ui-monospace, monospace',
         values: yTickValues,
         size: 64,
       },

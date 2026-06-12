@@ -4,22 +4,27 @@ import { useMeterStore } from '@/stores/meter'
 
 const store = useMeterStore()
 const idn = computed(() => store.state?.idn ?? '—')
+// IDN is "<vendor>,<model>,<serial>,<fw>"; the model is the only part worth header space.
+const model = computed(() => {
+  const parts = store.state?.idn?.split(',') ?? []
+  return parts.length >= 2 ? parts[1].trim() : null
+})
 const polling = computed(() => store.state?.polling ?? false)
 const interval = computed(() => store.state?.intervalMs ?? 0)
 </script>
 
 <template>
   <div class="status">
-    <span class="item" :title="store.linked ? 'connected to broker' : 'broker offline'">
+    <span class="pill" :title="store.linked ? 'connected to broker' : 'broker offline'">
       <span class="dot" :class="store.linked ? 'on' : 'off'" />broker
     </span>
-    <span class="item" :title="idn">
-      <span class="dot" :class="store.instrumentConnected ? 'on' : 'off'" />instrument
+    <span class="pill" :title="idn">
+      <span class="dot" :class="store.instrumentConnected ? 'on' : 'off'" />
+      <span :class="{ model: model }">{{ model ?? 'instrument' }}</span>
     </span>
-    <span class="idn">{{ idn }}</span>
-    <span class="item poll">
+    <span class="pill">
       <span class="dot" :class="polling ? 'on' : ''" />{{
-        polling ? `polling @ ${interval}ms` : 'idle'
+        polling ? `polling @ ${interval} ms` : 'idle'
       }}
     </span>
   </div>
@@ -29,23 +34,23 @@ const interval = computed(() => store.state?.intervalMs ?? 0)
 .status {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
-.item {
+.pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-.idn {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--text);
-  max-width: 360px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 7px;
+  padding: 4px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   white-space: nowrap;
+}
+.model {
+  color: var(--text);
+  font-family: ui-monospace, monospace;
 }
 </style>
