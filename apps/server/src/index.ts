@@ -47,11 +47,14 @@ async function main(): Promise<void> {
       }),
   )
 
+  // `state.polling` is the desired state (seeded from config at startup, then owned
+  // by the user). Reconcile the poller against it here: polling resumes across
+  // reconnects, but a user Stop stays stopped instead of being instantly
+  // re-triggered by its own state broadcast.
   meter.on('state', (state) => {
     hub.broadcast({ type: 'state', state })
-    if (state.connected && config.pollAutostart && !poller.isRunning) {
+    if (state.connected && state.polling && !poller.isRunning) {
       poller.start()
-      meter.setPolling(true)
     }
   })
   meter.on('console', (entry) => hub.broadcast({ type: 'console', entry }))
@@ -74,9 +77,8 @@ async function main(): Promise<void> {
         meter.setInterval(msg.intervalMs)
         break
       case 'setPolling':
-        if (msg.enabled) poller.start()
-        else poller.stop()
-        meter.setPolling(msg.enabled)
+        if (!msg.enabled) poller.stop()
+        meter.setPolling(msg.enabled) // start happens via the state reconciler
         break
       case 'measureOnce': {
         const reading = await meter.measure()
@@ -133,6 +135,7 @@ async function main(): Promise<void> {
 
   // -- start ---------------------------------------------------------------
 
+  meter.setPolling(config.pollAutostart)
   bridge.start()
   await app.listen({ host: config.host, port: config.port })
   console.log(
