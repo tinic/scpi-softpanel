@@ -1,10 +1,52 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatValue } from '@/lib/format'
+import { startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
+
+// -- continuity tone -------------------------------------------------------
+// Matches the meter's default continuity threshold (CONT:THR:VAL, 50 Ω).
+const CONT_THRESHOLD_OHMS = 50
+const SOUND_PREF_KEY = 'scpi.contSound'
+
+const soundOn = ref(localStorage.getItem(SOUND_PREF_KEY) !== 'off')
+function toggleSound() {
+  soundOn.value = !soundOn.value
+  localStorage.setItem(SOUND_PREF_KEY, soundOn.value ? 'on' : 'off')
+}
+
+// Stop the tone if readings stall (poll stopped, link lost) while shorted —
+// each closed-circuit reading re-arms this.
+let staleTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  [() => store.lastReading, () => store.state?.function, soundOn],
+  () => {
+    const r = store.lastReading
+    const closed =
+      soundOn.value &&
+      store.state?.function === 'CONT' &&
+      r?.function === 'CONT' &&
+      Number.isFinite(r.value) &&
+      r.value < CONT_THRESHOLD_OHMS
+    if (staleTimer) clearTimeout(staleTimer)
+    if (closed) {
+      startTone()
+      staleTimer = setTimeout(stopTone, 1500)
+    } else {
+      stopTone()
+    }
+  },
+  { deep: false },
+)
+
+onBeforeUnmount(() => {
+  if (staleTimer) clearTimeout(staleTimer)
+  stopTone()
+})
 
 const functionLabel = computed(() => {
   const fn = store.state?.function
@@ -48,7 +90,18 @@ const stats = computed(() => {
 
 <template>
   <div class="live">
-    <div class="fn">{{ functionLabel }}</div>
+    <div class="fn">
+      {{ functionLabel }}
+      <button
+        v-if="store.state?.function === 'CONT'"
+        class="snd"
+        :class="{ on: soundOn }"
+        :title="soundOn ? 'Continuity tone: on' : 'Continuity tone: muted'"
+        @click="toggleSound"
+      >
+        {{ soundOn ? '◗))' : '◗' }}
+      </button>
+    </div>
     <div class="value" :class="{ overload }">
       <span class="mag">
         <span class="sign">{{ display.sign }}</span>
@@ -85,10 +138,26 @@ const stats = computed(() => {
   gap: 10px;
 }
 .fn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   font-size: 13px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+.snd {
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 999px;
+  color: var(--muted);
+  letter-spacing: normal;
+}
+.snd.on {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .value {
   display: flex;

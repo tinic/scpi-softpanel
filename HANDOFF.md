@@ -107,6 +107,12 @@ All in `apps/web/`:
   that glyph renders. Symbol picks were screenshot-compared in /tmp/sym-test.html.
 - **Stats are per-function**: min/avg/max only aggregate readings whose `function`
   matches the current one (a function switch used to relabel old volts as Ω).
+- **Continuity tone (2026-06-13)**: in CONT mode the browser plays a soft sine dyad
+  (660+990 Hz, `lib/tone.ts`) while the reading is < 50 Ω (matches the meter's default
+  `CONT:THR:VAL`; not synced if the user changes it on the meter). Mute pill next to
+  the CONTINUITY label, preference in `localStorage['scpi.contSound']`. Tone has a
+  1.5 s staleness timer so it can't drone on if readings stall while shorted. Web
+  Audio unlocks on any prior click (e.g. selecting CONT in the UI).
 
 ### Instrument facts probed from the real SDM3045X (2026-06-12)
 
