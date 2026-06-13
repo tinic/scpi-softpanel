@@ -128,11 +128,13 @@ class Bridge:
             code = getattr(e, "abbreviation", "VISA_ERROR")
             log(f"VISA error on {method}: {e}")
             emit({"id": rid, "ok": False, "error": str(e), "code": code})
-            # A lost/closed link should not leave us pretending we're connected.
-            if code in {"VI_ERROR_CONN_LOST", "VI_ERROR_RSRC_NFOUND", "VI_ERROR_TMO"}:
-                if code != "VI_ERROR_TMO":
-                    self._close_quietly()
-                    emit({"event": "disconnected", "reason": code})
+            # A lost/closed link should not leave us pretending we're connected,
+            # or the broker spams failing commands forever instead of reconnecting.
+            # VI_ERROR_TMO is deliberately NOT here: a slow command isn't a dead
+            # session. VI_ERROR_IO is: seen when the meter's TCP side dies under us.
+            if code in {"VI_ERROR_CONN_LOST", "VI_ERROR_RSRC_NFOUND", "VI_ERROR_IO"}:
+                self._close_quietly()
+                emit({"event": "disconnected", "reason": code})
         except Exception as e:  # noqa: BLE001 - report everything to the broker
             log(f"error on {method}: {e}\n{traceback.format_exc()}")
             emit({"id": rid, "ok": False, "error": str(e), "code": "EERROR"})
