@@ -113,7 +113,9 @@ All in `apps/web/`:
   the CONTINUITY label, preference in `localStorage['scpi.contSound']`; volume
   slider beside it (5-100%, `localStorage['scpi.contVolume']`, default 40) scales
   `MAX_GAIN` in `lib/tone.ts` live and plays a preview blip on release. Tone has a
-  1.5 s staleness timer so it can't drone on if readings stall while shorted. Web
+  1.5 s staleness timer so it can't drone on if readings stall while shorted.
+  Display in CONT mode uses `formatContinuity`: plain ohms at 0.1 Ω resolution (no
+  m/k scaling) for value and stats, and overload renders as muted "open", not OL. Web
   Audio unlocks on any prior click (e.g. selecting CONT in the UI).
 
 ### Instrument facts probed from the real SDM3045X (2026-06-12)

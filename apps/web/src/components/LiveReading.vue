@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
-import { formatValue } from '@/lib/format'
+import { formatContinuity, formatValue } from '@/lib/format'
 import { blipTone, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
@@ -67,13 +67,17 @@ const functionLabel = computed(() => {
   return fn ? FUNCTION_INFO[fn].label : '—'
 })
 
+const isCont = computed(() => store.lastReading?.function === 'CONT')
+
 const display = computed(() => {
   const r = store.lastReading
   if (!r) return { sign: '', text: '––––', unit: '' }
-  return formatValue(r.value, r.unit)
+  return isCont.value ? formatContinuity(r.value) : formatValue(r.value, r.unit)
 })
 
 const overload = computed(() => store.lastReading?.overload ?? false)
+// An open circuit is continuity's resting state, not an alarm — styled muted, not warn.
+const contOpen = computed(() => overload.value && isCont.value)
 
 // Baseline for the min/avg/max window; advancing it "clears" the stats so they
 // re-accumulate from the current reading onward.
@@ -94,10 +98,11 @@ const stats = computed(() => {
   const max = Math.max(...vals)
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length
   const unit = store.lastReading?.unit ?? ''
+  const fmt = isCont.value ? formatContinuity : (v: number) => formatValue(v, unit)
   return {
-    min: formatValue(min, unit),
-    max: formatValue(max, unit),
-    avg: formatValue(avg, unit),
+    min: fmt(min),
+    max: fmt(max),
+    avg: fmt(avg),
   }
 })
 </script>
@@ -129,7 +134,7 @@ const stats = computed(() => {
         />
       </template>
     </div>
-    <div class="value" :class="{ overload }">
+    <div class="value" :class="{ overload: overload && !contOpen, open: contOpen }">
       <span class="mag">
         <span class="sign">{{ display.sign }}</span>
         <span class="num">{{ display.text }}</span>
@@ -251,6 +256,9 @@ const stats = computed(() => {
 }
 .value.overload .mag {
   color: var(--warn);
+}
+.value.open .mag {
+  color: var(--muted);
 }
 .stats {
   display: flex;

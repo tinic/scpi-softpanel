@@ -41,6 +41,16 @@ export function formatValue(value: number, unit: string, digits = 5): Formatted 
 }
 
 /**
+ * Continuity-mode formatter. Sub-ohm engineering notation ("80.850 mΩ") is noise
+ * here — readings show in plain ohms at 0.1 Ω resolution, and an open circuit
+ * reads "open" instead of the generic OL.
+ */
+export function formatContinuity(value: number): Formatted {
+  if (!Number.isFinite(value)) return { sign: '', text: 'open', unit: '' }
+  return { sign: value < 0 ? '-' : '', text: Math.abs(value).toFixed(1), unit: 'Ω' }
+}
+
+/**
  * Compact label for a range button, e.g. 0.2 V -> "200 mV", 1e8 Ω -> "100 MΩ".
  * Voltage ranges stay in volts ("1000 V", not "1 kV") to match the front panel.
  */
