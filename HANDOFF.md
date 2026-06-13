@@ -1,7 +1,7 @@
 # Session handoff — scpi-softpanel
 
 Living context so a fresh Claude session can continue without re-deriving anything.
-Last updated: 2026-06-12.
+Last updated: 2026-06-13.
 
 ## What this is
 
@@ -30,8 +30,8 @@ trend open). One fix made: Trend y-axis tick labels all collapsed to the same st
 at µV-level spreads; `TrendChart.vue` now derives tick decimals from the tick
 increment (`yTickValues`) and the y-axis gutter is 64px.
 
-Initial commit made on `main`. Remote is `git@github.com:tinic/scpi-softpanel.git` —
-**not pushed yet**; push when the user wants it on GitHub.
+Pushed to `git@github.com:tinic/scpi-softpanel.git` (2026-06-12); GitHub Actions CI is
+green. Commit + push directly on `main` is the established flow here.
 
 ## Environment (host: playhouse2)
 
@@ -150,8 +150,7 @@ the 720px single-column layout and live function/range switching (DCV↔Ω2W).
 
 ## Likely next steps
 
-1. **Push to GitHub** when the user asks (remote configured, nothing pushed).
-2. Possible follow-ups: SQLite persistence behind the `ReadingStore` interface (currently
+1. Possible follow-ups: SQLite persistence behind the `ReadingStore` interface (currently
    in-memory ring); build/run the Docker image (Dockerfile ready; Docker not installed here).
 
 ## File map (source)
