@@ -110,7 +110,9 @@ All in `apps/web/`:
 - **Continuity tone (2026-06-13)**: in CONT mode the browser plays a soft sine dyad
   (660+990 Hz, `lib/tone.ts`) while the reading is < 50 Ω (matches the meter's default
   `CONT:THR:VAL`; not synced if the user changes it on the meter). Mute pill next to
-  the CONTINUITY label, preference in `localStorage['scpi.contSound']`. Tone has a
+  the CONTINUITY label, preference in `localStorage['scpi.contSound']`; volume
+  slider beside it (5-100%, `localStorage['scpi.contVolume']`, default 40) scales
+  `MAX_GAIN` in `lib/tone.ts` live and plays a preview blip on release. Tone has a
   1.5 s staleness timer so it can't drone on if readings stall while shorted. Web
   Audio unlocks on any prior click (e.g. selecting CONT in the UI).
 

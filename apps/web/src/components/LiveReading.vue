@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatValue } from '@/lib/format'
-import { startTone, stopTone } from '@/lib/tone'
+import { blipTone, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
 
@@ -12,10 +12,24 @@ const store = useMeterStore()
 const CONT_THRESHOLD_OHMS = 50
 const SOUND_PREF_KEY = 'scpi.contSound'
 
+const VOLUME_PREF_KEY = 'scpi.contVolume'
+
 const soundOn = ref(localStorage.getItem(SOUND_PREF_KEY) !== 'off')
 function toggleSound() {
   soundOn.value = !soundOn.value
   localStorage.setItem(SOUND_PREF_KEY, soundOn.value ? 'on' : 'off')
+}
+
+const storedVol = Number(localStorage.getItem(VOLUME_PREF_KEY))
+const volPct = ref(Number.isFinite(storedVol) && storedVol > 0 ? storedVol : 40)
+setToneVolume(volPct.value / 100)
+function onVolume() {
+  localStorage.setItem(VOLUME_PREF_KEY, String(volPct.value))
+  setToneVolume(volPct.value / 100)
+}
+// Preview on release so the level can be judged without holding a short.
+function onVolumeSet() {
+  if (soundOn.value) blipTone()
 }
 
 // Stop the tone if readings stall (poll stopped, link lost) while shorted —
@@ -92,15 +106,28 @@ const stats = computed(() => {
   <div class="live">
     <div class="fn">
       {{ functionLabel }}
-      <button
-        v-if="store.state?.function === 'CONT'"
-        class="snd"
-        :class="{ on: soundOn }"
-        :title="soundOn ? 'Continuity tone: on' : 'Continuity tone: muted'"
-        @click="toggleSound"
-      >
-        {{ soundOn ? '◗))' : '◗' }}
-      </button>
+      <template v-if="store.state?.function === 'CONT'">
+        <button
+          class="snd"
+          :class="{ on: soundOn }"
+          :title="soundOn ? 'Continuity tone: on' : 'Continuity tone: muted'"
+          @click="toggleSound"
+        >
+          {{ soundOn ? '◗))' : '◗' }}
+        </button>
+        <input
+          v-model.number="volPct"
+          class="vol"
+          type="range"
+          min="5"
+          max="100"
+          step="5"
+          title="Continuity tone volume"
+          :disabled="!soundOn"
+          @input="onVolume"
+          @change="onVolumeSet"
+        />
+      </template>
     </div>
     <div class="value" :class="{ overload }">
       <span class="mag">
@@ -158,6 +185,41 @@ const stats = computed(() => {
 .snd.on {
   color: var(--accent);
   border-color: var(--accent);
+}
+.vol {
+  appearance: none;
+  width: 88px;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: var(--border);
+  cursor: pointer;
+}
+.vol::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.vol::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.vol:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vol:disabled::-webkit-slider-thumb {
+  background: var(--muted);
+}
+.vol:disabled::-moz-range-thumb {
+  background: var(--muted);
 }
 .value {
   display: flex;

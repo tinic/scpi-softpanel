@@ -9,6 +9,27 @@
 let ctx: AudioContext | null = null
 let active: { master: GainNode; oscs: OscillatorNode[] } | null = null
 
+/** Gain at volume 1.0; the user volume (0..1) scales linearly under this. */
+const MAX_GAIN = 0.18
+let volume = 0.4
+
+/** Set tone volume (0..1). Takes effect immediately if the tone is playing. */
+export function setToneVolume(v: number): void {
+  volume = Math.min(1, Math.max(0, v))
+  if (ctx && active) {
+    const t = ctx.currentTime
+    active.master.gain.cancelScheduledValues(t)
+    active.master.gain.setTargetAtTime(MAX_GAIN * volume, t, 0.02)
+  }
+}
+
+/** Short preview blip so the level can be set without an actual short. */
+export function blipTone(): void {
+  if (active) return // the real tone is already audible at the new volume
+  startTone()
+  setTimeout(stopTone, 180)
+}
+
 export function startTone(): void {
   ctx ??= new AudioContext()
   if (ctx.state === 'suspended') void ctx.resume()
@@ -17,7 +38,7 @@ export function startTone(): void {
   const t = ctx.currentTime
   const master = ctx.createGain()
   master.gain.setValueAtTime(0, t)
-  master.gain.linearRampToValueAtTime(0.07, t + 0.025) // soft attack, no click
+  master.gain.linearRampToValueAtTime(MAX_GAIN * volume, t + 0.025) // soft attack, no click
   master.connect(ctx.destination)
 
   const oscs = [
