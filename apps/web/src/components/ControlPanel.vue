@@ -49,9 +49,9 @@ const activeRange = computed(() => {
       </div>
     </div>
 
-    <div class="row">
+    <div v-if="currentInfo?.ranges" class="row">
       <label>Range</label>
-      <div v-if="currentInfo?.ranges" class="seg">
+      <div class="seg">
         <button :class="{ primary: autoRange }" @click="store.setAutoRange(true)">Auto</button>
         <button
           v-for="r in currentInfo.ranges"
@@ -62,7 +62,6 @@ const activeRange = computed(() => {
           {{ formatRangeLabel(r, currentInfo.unit) }}
         </button>
       </div>
-      <span v-else class="muted">auto</span>
     </div>
 
     <div v-if="store.state?.function === 'CONT'" class="row">
@@ -79,9 +78,9 @@ const activeRange = computed(() => {
       </div>
     </div>
 
-    <div class="row">
+    <div v-if="currentInfo?.supportsNplc" class="row">
       <label>NPLC</label>
-      <div v-if="currentInfo?.supportsNplc" class="seg">
+      <div class="seg">
         <button
           v-for="p in NPLC_CHOICES"
           :key="p"
@@ -91,7 +90,6 @@ const activeRange = computed(() => {
           {{ p }}
         </button>
       </div>
-      <span v-else class="muted">n/a</span>
     </div>
 
     <div class="row">
@@ -147,10 +145,5 @@ const activeRange = computed(() => {
   line-height: 1;
   margin-left: 5px;
   vertical-align: -0.1em;
-}
-.muted {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 31px;
 }
 </style>

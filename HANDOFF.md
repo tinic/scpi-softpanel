@@ -96,7 +96,9 @@ All in `apps/web/`:
   tooltips); Range is Auto + per-function preset buttons; NPLC presets come from shared
   `NPLC_CHOICES`. **Removed:** Refresh-state button (broker auto-refreshes after raw
   console writes — see `Meter.raw`), the poll-interval input (env default 100 ms is
-  fine), and the free-text range field. All `.seg` rows share a
+  fine), and the free-text range field. Rows that don't apply to the active
+  function (Range, NPLC, Beep <) are hidden entirely, not shown as n/a. All
+  `.seg` rows share a
   `repeat(auto-fill, minmax(64px, 1fr))` grid so wrapped rows align like a keypad.
 - **Fonts (all OFL, embedded in `assets/fonts/`)**: **Noto Sans** 400/600/700 is the
   app-wide UI font; **Iosevka ExtraBold** stays exclusively on measurement values
