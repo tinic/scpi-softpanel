@@ -8,8 +8,8 @@ import { blipTone, setToneVolume, startTone, stopTone } from '@/lib/tone'
 const store = useMeterStore()
 
 // -- continuity tone -------------------------------------------------------
-// Matches the meter's default continuity threshold (CONT:THR:VAL, 50 Ω).
-const CONT_THRESHOLD_OHMS = 50
+// Follows the meter's own threshold (CONT:THR:VAL, in state); 50 Ω is its default.
+const threshold = computed(() => store.state?.contThreshold ?? 50)
 const SOUND_PREF_KEY = 'scpi.contSound'
 
 const VOLUME_PREF_KEY = 'scpi.contVolume'
@@ -45,7 +45,7 @@ watch(
       store.state?.function === 'CONT' &&
       r?.function === 'CONT' &&
       Number.isFinite(r.value) &&
-      r.value < CONT_THRESHOLD_OHMS
+      r.value < threshold.value
     if (staleTimer) clearTimeout(staleTimer)
     if (closed) {
       startTone()

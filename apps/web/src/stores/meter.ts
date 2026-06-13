@@ -100,6 +100,7 @@ export const useMeterStore = defineStore('meter', () => {
   const setRange = (range: string) => send({ type: 'setRange', range })
   const setAutoRange = (enabled: boolean) => send({ type: 'setAutoRange', enabled })
   const setNplc = (nplc: number) => send({ type: 'setNplc', nplc })
+  const setContThreshold = (ohms: number) => send({ type: 'setContThreshold', ohms })
   const setPolling = (enabled: boolean) => send({ type: 'setPolling', enabled })
   const setInterval = (intervalMs: number) => send({ type: 'setInterval', intervalMs })
   const measureOnce = () => send({ type: 'measureOnce' })
@@ -121,6 +122,7 @@ export const useMeterStore = defineStore('meter', () => {
     setRange,
     setAutoRange,
     setNplc,
+    setContThreshold,
     setPolling,
     setInterval,
     measureOnce,

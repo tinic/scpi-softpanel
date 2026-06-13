@@ -23,6 +23,8 @@ export const MeterStateSchema = z.object({
   range: z.string().nullable(), // numeric string, or 'AUTO'
   autoRange: z.boolean().nullable(),
   nplc: z.number().nullable(),
+  // CONT only; the instrument resets it to 50 Ω on every CONFigure.
+  contThreshold: z.number().nullable(),
   polling: z.boolean(),
   intervalMs: z.number(),
   lastError: z.string().nullable(),
@@ -38,6 +40,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setRange'), range: z.string() }), // numeric or 'AUTO'
   z.object({ type: z.literal('setAutoRange'), enabled: z.boolean() }),
   z.object({ type: z.literal('setNplc'), nplc: z.number().positive() }),
+  z.object({ type: z.literal('setContThreshold'), ohms: z.number().min(0).max(2000) }),
   z.object({ type: z.literal('setPolling'), enabled: z.boolean() }),
   z.object({ type: z.literal('setInterval'), intervalMs: z.number().int().min(50).max(60000) }),
   z.object({ type: z.literal('measureOnce') }),

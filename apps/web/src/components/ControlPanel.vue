@@ -11,6 +11,10 @@ const currentInfo = computed(() =>
   store.state?.function ? FUNCTION_INFO[store.state.function] : null,
 )
 
+// Continuity beep threshold presets; the meter accepts 0–2000 Ω (default 50)
+// and resets to the default on every function change.
+const CONT_THRESHOLDS = [1, 10, 50, 100, 500, 1000]
+
 // "V ⎓" -> letter + enlarged symbol; "Ω 2W", "Hz", "⊣⊢" render as-is.
 function splitShort(s: string): { pre: string; sym: string | null } {
   const m = /^([A-Za-z]+) (\W+)$/.exec(s)
@@ -59,6 +63,20 @@ const activeRange = computed(() => {
         </button>
       </div>
       <span v-else class="muted">auto</span>
+    </div>
+
+    <div v-if="store.state?.function === 'CONT'" class="row">
+      <label>Beep &lt;</label>
+      <div class="seg">
+        <button
+          v-for="t in CONT_THRESHOLDS"
+          :key="t"
+          :class="{ primary: store.state?.contThreshold === t }"
+          @click="store.setContThreshold(t)"
+        >
+          {{ formatRangeLabel(t, 'Ω') }}
+        </button>
+      </div>
     </div>
 
     <div class="row">

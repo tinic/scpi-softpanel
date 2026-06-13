@@ -73,6 +73,9 @@ async function main(): Promise<void> {
       case 'setNplc':
         await meter.setNplc(msg.nplc)
         break
+      case 'setContThreshold':
+        await meter.setContThreshold(msg.ohms)
+        break
       case 'setInterval':
         meter.setInterval(msg.intervalMs)
         break

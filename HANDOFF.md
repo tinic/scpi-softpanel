@@ -114,6 +114,11 @@ All in `apps/web/`:
   slider beside it (5-100%, `localStorage['scpi.contVolume']`, default 40) scales
   `MAX_GAIN` in `lib/tone.ts` live and plays a preview blip on release. Tone has a
   1.5 s staleness timer so it can't drone on if readings stall while shorted.
+  **Threshold is settable**: "Beep <" preset row (1/10/50/100/500/1000 Ω) in the
+  controls when CONT is active → `CONT:THR:VAL` on the meter (read back), surfaced
+  as `state.contThreshold`; the browser tone uses the same value. ⚠️ The instrument
+  resets the threshold to 50 Ω on EVERY CONFigure/function change (per programming
+  guide) — the UI reflects that truthfully rather than re-applying a stored value.
   Display in CONT mode uses `formatContinuity`: plain ohms at 0.1 Ω resolution (no
   m/k scaling) for value and stats, and overload renders as muted "open", not OL. Web
   Audio unlocks on any prior click (e.g. selecting CONT in the UI).

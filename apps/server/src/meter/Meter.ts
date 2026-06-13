@@ -43,6 +43,7 @@ export class Meter extends EventEmitter {
       range: null,
       autoRange: null,
       nplc: null,
+      contThreshold: null,
       polling: false,
       intervalMs: opts.intervalMs,
       lastError: null,
@@ -161,6 +162,16 @@ export class Meter extends EventEmitter {
     }
   }
 
+  /** Set the continuity beep threshold (0–2000 Ω). CONT mode only. */
+  async setContThreshold(ohms: number): Promise<void> {
+    if (this.state.function !== 'CONT') {
+      throw new Error('continuity threshold is only settable in CONT mode')
+    }
+    await this.command(`CONT:THR:VAL ${ohms}`)
+    const actual = await this.queryNum('CONT:THR:VAL?')
+    this.patch({ contThreshold: actual ?? ohms })
+  }
+
   setInterval(intervalMs: number): void {
     this.patch({ intervalMs })
   }
@@ -205,6 +216,8 @@ export class Meter extends EventEmitter {
         }
         patch.nplc =
           info.sense && info.supportsNplc ? await this.queryNum(`SENS:${info.sense}:NPLC?`) : null
+        // The instrument resets this to its 50 Ω default on every CONFigure.
+        patch.contThreshold = fn === 'CONT' ? await this.queryNum('CONT:THR:VAL?') : null
       }
       this.patch(patch)
     } catch (err) {
