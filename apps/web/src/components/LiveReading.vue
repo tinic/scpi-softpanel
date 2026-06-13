@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatContinuity, formatValue } from '@/lib/format'
-import { blipTone, setToneVolume, startTone, stopTone } from '@/lib/tone'
+import { blipTone, onToneBlocked, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
 
@@ -32,6 +32,11 @@ function onVolumeSet() {
   if (soundOn.value) blipTone()
 }
 
+// True while the browser's autoplay policy keeps audio suspended (i.e. the page
+// hasn't seen a user gesture since load); the pill shows a hint in that state.
+const audioBlocked = ref(false)
+const unsubBlocked = onToneBlocked((b) => (audioBlocked.value = b))
+
 // Stop the tone if readings stall (poll stopped, link lost) while shorted —
 // each closed-circuit reading re-arms this.
 let staleTimer: ReturnType<typeof setTimeout> | null = null
@@ -59,6 +64,7 @@ watch(
 
 onBeforeUnmount(() => {
   if (staleTimer) clearTimeout(staleTimer)
+  unsubBlocked()
   stopTone()
 })
 
@@ -114,8 +120,14 @@ const stats = computed(() => {
       <template v-if="store.state?.function === 'CONT'">
         <button
           class="snd"
-          :class="{ on: soundOn }"
-          :title="soundOn ? 'Continuity tone: on' : 'Continuity tone: muted'"
+          :class="{ on: soundOn && !audioBlocked, blocked: soundOn && audioBlocked }"
+          :title="
+            soundOn
+              ? audioBlocked
+                ? 'Audio blocked by the browser — click anywhere to enable'
+                : 'Continuity tone: on'
+              : 'Continuity tone: muted'
+          "
           @click="toggleSound"
         >
           {{ soundOn ? '◗))' : '◗' }}
@@ -190,6 +202,10 @@ const stats = computed(() => {
 .snd.on {
   color: var(--accent);
   border-color: var(--accent);
+}
+.snd.blocked {
+  color: var(--warn);
+  border-color: var(--warn);
 }
 .vol {
   appearance: none;

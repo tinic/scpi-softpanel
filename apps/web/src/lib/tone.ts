@@ -9,6 +9,40 @@
 let ctx: AudioContext | null = null
 let active: { master: GainNode; oscs: OscillatorNode[] } | null = null
 
+// -- autoplay-policy handling ------------------------------------------------
+// After a page load the context stays 'suspended' until a user gesture; a tone
+// "playing" into it is silent. We track that, let the UI show it, and unlock on
+// the first gesture anywhere in the page.
+let blocked = false
+let unlockInstalled = false
+const blockedListeners = new Set<(blocked: boolean) => void>()
+
+function setBlocked(b: boolean): void {
+  if (b === blocked) return
+  blocked = b
+  for (const fn of blockedListeners) fn(b)
+}
+
+/** Subscribe to audio-blocked state (fires immediately). Returns unsubscribe. */
+export function onToneBlocked(fn: (blocked: boolean) => void): () => void {
+  blockedListeners.add(fn)
+  fn(blocked)
+  return () => blockedListeners.delete(fn)
+}
+
+function installUnlockListener(): void {
+  if (unlockInstalled) return
+  unlockInstalled = true
+  const unlock = () => {
+    if (ctx && ctx.state === 'suspended') {
+      void ctx.resume().then(() => setBlocked(false))
+    }
+  }
+  // Capture phase so the gesture counts even when a widget handles the event.
+  document.addEventListener('pointerdown', unlock, { capture: true })
+  document.addEventListener('keydown', unlock, { capture: true })
+}
+
 /** Gain at volume 1.0; the user volume (0..1) scales linearly under this. */
 const MAX_GAIN = 0.18
 let volume = 0.4
@@ -32,7 +66,13 @@ export function blipTone(): void {
 
 export function startTone(): void {
   ctx ??= new AudioContext()
-  if (ctx.state === 'suspended') void ctx.resume()
+  if (ctx.state === 'suspended') {
+    void ctx.resume().then(() => setBlocked(ctx!.state === ('suspended' as AudioContextState)))
+    setBlocked(ctx.state === 'suspended')
+    installUnlockListener()
+  } else {
+    setBlocked(false)
+  }
   if (active) return
 
   const t = ctx.currentTime
