@@ -33,6 +33,46 @@ increment (`yTickValues`) and the y-axis gutter is 64px.
 Pushed to `git@github.com:tinic/scpi-softpanel.git` (2026-06-12); GitHub Actions CI is
 green. Commit + push directly on `main` is the established flow here.
 
+## Milestone 2 — Rust port for a shippable desktop app (IN PROGRESS, 2026-06-15)
+
+Goal: downloadable Win/mac/Linux app **and** keep the LAN-server model, from one
+codebase. Plan: **Tauri** shell + a **Rust core** (`scpi-core`) that replaces BOTH the
+Node broker and the Python bridge; the same core powers the desktop app and a headless
+server binary. Decision rationale: instrument comms is pure TCP, so Python/pyvisa buys
+nothing Rust can't do directly; one runtime → one small signed binary.
+
+**DONE & verified against the live meter (serving the unchanged Vue frontend):**
+
+- `rust/` Cargo workspace: `scpi-core` (lib) + `scpi-server` (headless Axum bin).
+- `scpi-core`: serde wire contract matching `packages/shared` (camelCase, `type`-tagged
+  unions), function metadata + probed ranges, **raw-socket SCPI client** (plain TCP on
+  5025 — no VXI-11/RPC, no pyvisa), meter state machine + poll loop in one async task,
+  ring store. 9 unit tests, clippy clean.
+- `scpi-server`: Axum `/api/health · /api/state · /api/readings · /ws` with the exact
+  same snapshot/state/reading/console/error + client-message contract, plus static UI
+  serving. The existing Vue app connects to it **unchanged**.
+- Verified: live readings stream, function/range/NPLC/continuity-threshold round-trips,
+  trend chart, no page errors — all against the real SDM3045X over raw socket.
+
+**Run the Rust server** (replaces the Node broker; both can't hold the meter at once):
+
+```bash
+. "$HOME/.cargo/env"
+cd rust && cargo build --release
+WEB_DIST=../apps/web/dist METER_HOST=192.168.1.166 METER_PORT=5025 PORT=8080 \
+  ./target/release/scpi-server
+```
+
+⚠️ Raw socket means the meter is `TCPIP::host::5025::SOCKET` (env `METER_PORT`, def 5025),
+NOT VXI-11/`::INSTR` like the Node path. The probe-gated boot-settle was a VXI-11-specific
+mitigation; raw-socket connect is itself the gentle probe, so it's not ported.
+
+**NEXT (task #5):** Tauri desktop shell reusing `scpi-core` (recommended: embedded Axum on
+`127.0.0.1:<port>` + webview pointed at it, so the frontend stays byte-identical), Linux
+bundle buildable here, Win/mac via CI (`tauri-action`). Then retire `apps/server` (Node)
+
+- `bridge/` (Python). Old Node+Python stack still present and functional meanwhile.
+
 ## Environment (host: playhouse2)
 
 - Linux/Proxmox host, LAN IP **192.168.1.184**. Meter at **192.168.1.166** (single
