@@ -1,0 +1,4 @@
+# Tauri-generated schemas (regenerated on build)
+/gen
+# Intermediate raster from icon-source.svg (regenerate with rsvg-convert + cargo tauri icon)
+/icon-source.png

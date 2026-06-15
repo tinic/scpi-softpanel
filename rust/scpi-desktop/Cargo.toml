@@ -1,0 +1,20 @@
+[package]
+name = "scpi-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SCPI SoftPanel desktop app"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+scpi-core = { path = "../scpi-core" }
+scpi-server = { path = "../scpi-server" }
+tauri = { version = "2", features = [] }
+axum = { version = "0.7", features = ["ws"] }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rust-embed = "8"
+mime_guess = "2"
