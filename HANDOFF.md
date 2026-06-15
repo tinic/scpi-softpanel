@@ -36,7 +36,13 @@ green. Commit + push directly on `main` is the established flow here.
 ## Environment (host: playhouse2)
 
 - Linux/Proxmox host, LAN IP **192.168.1.184**. Meter at **192.168.1.166** (single
-  control session only — never open two connections at once).
+  control session only — never open two connections at once). It's a **VXI-11**
+  instrument (`TCPIP::…::INSTR`, ONC-RPC); powering it on with the broker hammering
+  VXI-11 opens used to wedge its boot. Reconnect is now **probe-gated** (`Meter.tick`):
+  a cheap TCP probe to port 5025 first, plus an 8s boot-settle on the off→on
+  transition, so no VXI-11/RPC traffic hits a booting meter. Tunable via
+  `METER_PROBE_PORT` / `METER_BOOT_SETTLE_MS`. ⚠️ **Not yet validated against the real
+  meter** (it was offline 2026-06-13/15) — power-cycle test it when the meter is back.
 - **No passwordless sudo.** Install user-space only. (`apt` is available but prompts for a password.)
 - **pnpm** pinned to **9.12.0** via `packageManager` in package.json (Node 20.19's bundled
   corepack can't run pnpm 11 — `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`). The shim is at
