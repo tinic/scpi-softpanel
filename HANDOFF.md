@@ -67,11 +67,33 @@ WEB_DIST=../apps/web/dist METER_HOST=192.168.1.166 METER_PORT=5025 PORT=8080 \
 NOT VXI-11/`::INSTR` like the Node path. The probe-gated boot-settle was a VXI-11-specific
 mitigation; raw-socket connect is itself the gentle probe, so it's not ported.
 
-**NEXT (task #5):** Tauri desktop shell reusing `scpi-core` (recommended: embedded Axum on
-`127.0.0.1:<port>` + webview pointed at it, so the frontend stays byte-identical), Linux
-bundle buildable here, Win/mac via CI (`tauri-action`). Then retire `apps/server` (Node)
+**Desktop app — DONE (Linux verified, 2026-06-15):** `rust/scpi-desktop` is a Tauri 2
+app that reuses `scpi-core` + `scpi-server`'s `api_router`. It runs the meter + HTTP/WS
+on an **embedded `127.0.0.1:<ephemeral>` server** and points the webview at it; the Vue
+bundle is embedded in the binary via `rust-embed`. Single self-contained executable;
+frontend byte-identical (same origin). `scpi-server` was split into lib (`api_router`)
 
-- `bridge/` (Python). Old Node+Python stack still present and functional meanwhile.
+- bin so both deployments share the HTTP/WS layer.
+
+* **Build the desktop app / bundles:** `cd rust/scpi-desktop && cargo tauri build`
+  (needs `apps/web/dist` built first — rust-embed embeds it at compile time). Produces
+  `rust/target/release/bundle/{deb,rpm,appimage}/`. The `.deb`/`.rpm` are ~6 MB (system
+  webview); the `.AppImage` is ~101 MB (self-contained GTK/WebKit).
+* **Icons:** `icon-source.svg` → `rsvg-convert` → `cargo tauri icon` regenerates
+  `icons/` (incl. `.icns`/`.ico`). `gen/` and `icon-source.png` are gitignored.
+* **GUI can't be run on this headless host** (no display) — only built. The served
+  content is the already-hardware-verified web UI; the embedded server reuses the
+  verified `api_router` + meter, so confidence is high. Smoke-run the GUI on a machine
+  with a display when convenient.
+* **Cross-platform:** `.github/workflows/desktop-release.yml` (tauri-action matrix:
+  windows / macOS ×2 / linux) builds installers on `v*` tags → draft Release. **Untested
+  by me** (needs a real CI run). Signing secrets are TODO — unsigned builds run but warn.
+
+**NEXT:** (1) push a `v0.1.0` tag to exercise the release CI; (2) add signing certs
+(Apple Developer ID + notarization, Windows/Azure Trusted Signing) for warning-free
+installs; (3) retire `apps/server` (Node) + `bridge/` (Python) once the desktop+server
+Rust path is blessed — both are still present and functional meanwhile (deleting is the
+user's call). Optional: a settings UI for meter host/port (currently env-only).
 
 ## Environment (host: playhouse2)
 
