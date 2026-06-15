@@ -39,6 +39,8 @@ export interface Config {
   port: number
   meterResource: string
   meterTimeoutMs: number
+  meterProbePort: number
+  meterBootSettleMs: number
   pollIntervalMs: number
   pollAutostart: boolean
   ringCapacity: number
@@ -52,6 +54,8 @@ export const config: Config = {
   port: envInt('PORT', 8080),
   meterResource: resolveResource(),
   meterTimeoutMs: envInt('METER_TIMEOUT_MS', 5000),
+  meterProbePort: envInt('METER_PROBE_PORT', 5025),
+  meterBootSettleMs: envInt('METER_BOOT_SETTLE_MS', 8000),
   pollIntervalMs: envInt('POLL_INTERVAL_MS', 100),
   pollAutostart: envBool('POLL_AUTOSTART', true),
   ringCapacity: envInt('RING_CAPACITY', 3600),

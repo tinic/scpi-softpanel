@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import net from 'node:net'
 import {
   FUNCTION_INFO,
   parseFunctionResponse,
@@ -15,6 +16,16 @@ export interface MeterOptions {
   timeoutMs: number
   intervalMs: number
   reconnectDelayMs?: number
+  /** TCP port probed for reachability before opening the (single-session) VISA link. */
+  probePort?: number
+  /** Timeout for the reachability probe. */
+  probeTimeoutMs?: number
+  /**
+   * Grace period after the meter first becomes reachable before opening the link.
+   * The SDM allows one control session and brings its VXI-11/RPC services up
+   * mid-boot; opening the session too early can wedge its startup, so we wait.
+   */
+  bootSettleMs?: number
 }
 
 /**
@@ -26,8 +37,16 @@ export interface MeterOptions {
 export class Meter extends EventEmitter {
   readonly state: MeterState
   private connecting = false
+  private stopped = false
   private reconnectTimer: NodeJS.Timeout | null = null
   private readonly reconnectDelayMs: number
+  private readonly probeHost: string | null
+  private readonly probePort: number
+  private readonly probeTimeoutMs: number
+  private readonly bootSettleMs: number
+  // Start optimistic: a meter already up when the broker launches connects without
+  // waiting out the settle delay; only a true off→on transition triggers the grace.
+  private wasReachable = true
 
   constructor(
     private readonly bridge: BridgeClient,
@@ -35,6 +54,10 @@ export class Meter extends EventEmitter {
   ) {
     super()
     this.reconnectDelayMs = opts.reconnectDelayMs ?? 3000
+    this.probePort = opts.probePort ?? 5025
+    this.probeTimeoutMs = opts.probeTimeoutMs ?? 1500
+    this.bootSettleMs = opts.bootSettleMs ?? 8000
+    this.probeHost = parseTcpipHost(opts.resource)
     this.state = {
       connected: false,
       idn: null,
@@ -50,8 +73,8 @@ export class Meter extends EventEmitter {
     }
 
     // The bridge re-emits `ready` on first launch and after any respawn; both mean
-    // "no live session" so we (re)connect uniformly.
-    this.bridge.on('ready', () => void this.connect())
+    // "no live session" so we (re)attempt a connection uniformly (probe-gated).
+    this.bridge.on('ready', () => void this.tick())
     this.bridge.on('event', (e: { event?: string; reason?: string }) => {
       if (e.event === 'disconnected') {
         this.patch({ connected: false })
@@ -86,12 +109,58 @@ export class Meter extends EventEmitter {
     }
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return
+  /** Halt reconnect attempts and release timers (graceful shutdown / tests). */
+  stop(): void {
+    this.stopped = true
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  private scheduleReconnect(delayMs = this.reconnectDelayMs): void {
+    if (this.stopped || this.reconnectTimer) return
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
-      void this.connect()
-    }, this.reconnectDelayMs)
+      void this.tick()
+    }, delayMs)
+  }
+
+  /**
+   * Reconnect driver. Probes a cheap TCP port first and only opens the heavy,
+   * single-session VISA link when the instrument is reachable AND was already
+   * reachable on the previous attempt. A fresh off→on transition (the meter was
+   * just powered on) instead gets a boot-settle grace period — hammering
+   * VXI-11/RPC at a meter mid-boot can wedge its startup. A bare TCP probe is far
+   * gentler than a VXI-11 link negotiation, and we emit none of the latter while
+   * the meter is off or booting.
+   */
+  private async tick(): Promise<void> {
+    if (this.stopped || this.connecting || this.state.connected) return
+
+    // Unparseable / non-TCPIP resource (e.g. a simulator): keep the old behavior.
+    if (this.probeHost === null) {
+      await this.connect()
+      return
+    }
+
+    const reachable = await probeTcp(this.probeHost, this.probePort, this.probeTimeoutMs)
+    if (!reachable) {
+      this.wasReachable = false
+      this.scheduleReconnect()
+      return
+    }
+    if (!this.wasReachable) {
+      // Just came up — let it finish booting before we claim its single session.
+      this.wasReachable = true
+      this.console(
+        'info',
+        `instrument reachable; waiting ${this.bootSettleMs}ms for boot to settle`,
+      )
+      this.scheduleReconnect(this.bootSettleMs)
+      return
+    }
+    await this.connect()
   }
 
   // -- measurement ---------------------------------------------------------
@@ -267,4 +336,32 @@ export class Meter extends EventEmitter {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Extract the host from a TCPIP VISA resource, or null for non-TCPIP forms.
+ *   TCPIP::192.168.1.166::INSTR          -> 192.168.1.166
+ *   TCPIP0::192.168.1.166::5025::SOCKET  -> 192.168.1.166
+ */
+function parseTcpipHost(resource: string): string | null {
+  const parts = resource.split('::')
+  return parts.length >= 2 && /^TCPIP\d*$/i.test(parts[0]) ? parts[1] : null
+}
+
+/** Resolve true iff a TCP connection to host:port completes within timeoutMs. */
+function probeTcp(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port })
+    let settled = false
+    const finish = (ok: boolean) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(ok)
+    }
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
 }

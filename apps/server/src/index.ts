@@ -24,6 +24,8 @@ async function main(): Promise<void> {
     resource: config.meterResource,
     timeoutMs: config.meterTimeoutMs,
     intervalMs: config.pollIntervalMs,
+    probePort: config.meterProbePort,
+    bootSettleMs: config.meterBootSettleMs,
   })
 
   function snapshot(): ServerMessage {
@@ -149,6 +151,7 @@ async function main(): Promise<void> {
   const shutdown = () => {
     console.log('\nshutting down...')
     poller.stop()
+    meter.stop()
     bridge.stop()
     void app.close().then(() => process.exit(0))
     setTimeout(() => process.exit(0), 2000).unref()
