@@ -1,79 +1,110 @@
 # SCPI SoftPanel
 
-A browser control panel for SCPI bench instruments that have no web UI of their own —
-built first for a **Siglent SDM3045X** bench multimeter, which exposes raw SCPI on TCP
-5025 (and VXI-11 on 111) but serves no web page.
+A control panel for SCPI bench instruments that have no web UI of their own — built
+first for a **Siglent SDM3045X** bench multimeter, which exposes raw SCPI over TCP
+(port 5025) but serves no UI.
 
-It runs on an always-on LAN host, owns the instrument's single control session, and
-serves a live browser UI: real-time readout, function/range/NPLC controls, a trend
-chart, and a raw-SCPI console.
+It ships two ways from one codebase:
+
+- **Desktop app** for Windows, macOS, and Linux — download, run, point it at your
+  instrument.
+- **Headless server** for an always-on LAN host — serves the same UI to any browser.
 
 ![SCPI SoftPanel reading a live SDM3045X](docs/screenshot.png)
 
+Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
+controls, a trend chart, a raw-SCPI console, and a continuity tone.
+
+## Architecture
+
 ```
-browser (Vue 3)  ⇄  WebSocket  ⇄  Node/TS broker  ⇄  JSON-RPC/stdio  ⇄  Python+pyvisa  ⇄  instrument
-                                   (all the logic)                      (the one VISA session)
+            ┌─────────────── scpi-core (Rust) ───────────────┐
+browser  ⇄  │  Axum HTTP/WS  ·  meter state machine + poller  │  ⇄  instrument
+(Vue 3)     │                ·  raw-socket SCPI client        │     (TCP 5025)
+            └────────────────────────────────────────────────┘
+                  ▲                              ▲
+           scpi-server (headless bin)     scpi-desktop (Tauri app,
+           LAN host, serves the UI         embeds the UI + server,
+           on :8080)                       webview → 127.0.0.1)
 ```
 
-## Why this shape
+- **One Rust core** (`rust/scpi-core`) does everything: a raw-socket SCPI client
+  (plain TCP — no VXI-11/RPC, no VISA), the meter state machine + poll loop, the
+  reading-history ring, and the wire contract shared with the frontend.
+- **`rust/scpi-server`** wraps it in an Axum HTTP/WS server and serves the built web
+  UI — the always-on LAN deployment.
+- **`rust/scpi-desktop`** is a Tauri app that embeds the same server (on an ephemeral
+  `127.0.0.1` port) and the Vue bundle, and points a webview at it — a single
+  self-contained executable. The frontend is byte-identical in both.
+- The **Vue 3 frontend** (`apps/web`) talks WebSocket + REST to the core, with shared
+  zod contracts in `packages/shared`.
 
-- **One control session.** The SDM accepts a single SCPI connection; the Python bridge
-  owns it and every request is serialized through the broker. No connection-per-request.
-- **Logic in TypeScript.** Polling cadence, state machine, reconnect, fan-out to N
-  browsers, and the reading history all live in the Node server. The Python side only
-  does `connect` / `query` / `write` over pyvisa (pure-python `pyvisa-py` backend, so no
-  NI-VISA install and a clean container).
-- **Pull, not push.** The meter doesn't stream; the broker polls (`READ?`) at a
-  configurable interval and pushes results to browsers over WebSocket.
+The instrument allows a single control session, so the core holds exactly one and
+serializes everything through it. A **Disconnect** button closes the socket so the
+meter is free for front-panel use (the SDM3045X has no remote→local SCPI command;
+press its Run/Stop key to return to local).
 
 ## Layout
 
 ```
-packages/shared   TS contracts (zod schemas → types) shared by server + web
-apps/server       Node + Fastify broker: bridge supervisor, meter controller, poller, WS hub
 apps/web          Vue 3 + Vite UI: live readout, controls, uPlot trend, SCPI console
-bridge            Python + pyvisa JSON-RPC executor (owns the single session)
+packages/shared   TS contracts (zod → types) shared by the web UI
+rust/scpi-core    SCPI client, meter state machine, poller, ring, wire contract
+rust/scpi-server  headless Axum HTTP/WS server (LAN deployment)
+rust/scpi-desktop Tauri desktop app (embeds core + server + UI)
 ```
 
 ## Develop
 
-Requires Node 20+, pnpm, and Python 3.
+Requires Node 20+, pnpm, and a Rust toolchain.
 
 ```bash
-# one-time: python bridge venv
-python3 -m venv bridge/.venv && bridge/.venv/bin/pip install -r bridge/requirements.txt
+# Terminal 1 — the core/server against your instrument (serves API + WS on :8080)
+cd rust
+METER_HOST=192.168.1.166 cargo run -p scpi-server
 
+# Terminal 2 — the Vite dev server (proxies /api + /ws to :8080)
 pnpm install
-cp .env.example .env        # point METER_RESOURCE / METER_HOST at your instrument
-pnpm dev                    # server :8080 + Vite :5173 (proxies /api + /ws)
+pnpm dev          # http://localhost:5173
 ```
 
-Open http://localhost:5173. The Vite dev server proxies the API/WebSocket to the broker.
-
-## Production / Docker
+For the desktop app (needs the Tauri prerequisites for your OS):
 
 ```bash
-pnpm build                  # builds the web bundle into apps/web/dist
-pnpm --filter @scpi/server start   # serves UI + API + WS on :8080
-
-# or, self-contained image (node + python bridge in one container):
-docker build -t scpi-softpanel .
-docker run --rm -p 8080:8080 -e METER_HOST=192.168.1.166 scpi-softpanel
+pnpm --filter @scpi/web build          # the app embeds this bundle at compile time
+cd rust/scpi-desktop && cargo tauri dev
 ```
+
+## Build & ship
+
+```bash
+# Headless server (LAN): build the UI, then the binary.
+pnpm --filter @scpi/web build
+cd rust && cargo build --release -p scpi-server
+WEB_DIST=../apps/web/dist METER_HOST=192.168.1.166 ./target/release/scpi-server  # :8080
+
+# Desktop installers (.deb/.rpm/.AppImage on Linux; .msi/.dmg on Windows/macOS):
+pnpm --filter @scpi/web build
+cd rust/scpi-desktop && cargo tauri build
+
+# Container (headless server):
+docker build -t scpi-softpanel .
+docker run --rm -p 8080:8080 -e METER_HOST=192.168.1.166 -v scpi-data:/data scpi-softpanel
+```
+
+Cross-platform desktop installers are produced by CI (`.github/workflows/desktop-release.yml`)
+on pushing a `v*` tag — Windows/macOS/Linux artifacts attach to a draft GitHub Release.
 
 ## Configuration
 
-All via environment (see `.env.example`): `METER_RESOURCE` / `METER_HOST`,
-`METER_TIMEOUT_MS`, `POLL_INTERVAL_MS`, `POLL_AUTOSTART`, `RING_CAPACITY`, `PORT`, `HOST`,
-`BRIDGE_PYTHON`.
+The meter target is settable at runtime from the UI (the gear → Instrument), persisted
+per-user. Defaults come from the environment (see `.env.example`): `METER_HOST`,
+`METER_PORT` (5025), `METER_TIMEOUT_MS`, `POLL_INTERVAL_MS`, `POLL_AUTOSTART`,
+`RING_CAPACITY`, `PORT`, `HOST`, `WEB_DIST`, `CONFIG_PATH`.
 
-## Scripts
+## Checks
 
-| Command          | Description                           |
-| ---------------- | ------------------------------------- |
-| `pnpm dev`       | Run broker + web dev server together  |
-| `pnpm build`     | Type-check and build the web bundle   |
-| `pnpm typecheck` | `tsc` / `vue-tsc` across all packages |
-| `pnpm lint`      | ESLint (flat config, TS + Vue)        |
-| `pnpm test`      | Vitest unit tests                     |
-| `pnpm format`    | Prettier check                        |
+```bash
+pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format   # web
+cd rust && cargo fmt --all --check && cargo clippy --all-targets && cargo test
+```

@@ -7,7 +7,7 @@ on:
 
 jobs:
   web:
-    name: lint · typecheck · test · build
+    name: web · lint · typecheck · test · build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +22,22 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  bridge:
-    name: python bridge
+  rust:
+    name: rust · fmt · clippy · test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: '3.12'
-      - run: pip install -r bridge/requirements.txt
-      - name: compile check
-        run: python -m py_compile bridge/bridge.py
+          components: rustfmt, clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo fmt --all --check
+      # Build/lint/test the headless path (core + server). The Tauri desktop crate
+      # needs system webkit deps and is exercised by desktop-release.yml instead.
+      - run: cargo clippy -p scpi-core -p scpi-server --all-targets -- -D warnings
+      - run: cargo test -p scpi-core -p scpi-server

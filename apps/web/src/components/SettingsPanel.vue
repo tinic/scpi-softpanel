@@ -54,7 +54,7 @@ watch(open, (isOpen) => {
       <div class="actions">
         <button @click="open = false">Cancel</button>
         <button class="primary" :disabled="saving || !host.trim()" @click="save">
-          {{ saving ? 'Saving…' : 'Save & reconnect' }}
+          {{ saving ? 'Saving…' : 'Save' }}
         </button>
       </div>
     </div>
