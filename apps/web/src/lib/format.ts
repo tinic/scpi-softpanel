@@ -51,6 +51,36 @@ export function formatContinuity(value: number): Formatted {
 }
 
 /**
+ * DC/AC suffix appended to the V/A unit so the readout labels like a bench DMM
+ * (VDC, VAC, ADC, AAC). Empty for functions with no DC/AC distinction — resistance,
+ * diode, capacitance, frequency, temperature, continuity.
+ */
+export function functionUnitSuffix(fn?: string): string {
+  switch (fn) {
+    case 'VOLT:DC':
+    case 'CURR:DC':
+      return 'DC'
+    case 'VOLT:AC':
+    case 'CURR:AC':
+      return 'AC'
+    default:
+      return ''
+  }
+}
+
+/**
+ * Format a reading with a function-aware unit: VDC/VAC/ADC/AAC for the voltage and
+ * current functions (so e.g. a DC millivolt reads "mVDC"), plain ohms for continuity,
+ * otherwise the SI-prefixed unit (mV, kΩ, …). Single entry point so the main display,
+ * the min/avg/max stats, and the trend tooltip all label identically.
+ */
+export function formatReading(r: { value: number; unit: string; function?: string }): Formatted {
+  if (r.function === 'CONT') return formatContinuity(r.value)
+  const f = formatValue(r.value, r.unit)
+  return { ...f, unit: f.unit + functionUnitSuffix(r.function) }
+}
+
+/**
  * Compact label for a range button, e.g. 0.2 V -> "200 mV", 1e8 Ω -> "100 MΩ".
  * Voltage ranges stay in volts ("1000 V", not "1 kV") to match the front panel.
  */

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
-import { formatContinuity, formatValue } from '@/lib/format'
+import { formatReading } from '@/lib/format'
 import { blipTone, onToneBlocked, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
@@ -78,7 +78,7 @@ const isCont = computed(() => store.lastReading?.function === 'CONT')
 const display = computed(() => {
   const r = store.lastReading
   if (!r) return { sign: '', text: '––––', unit: '' }
-  return isCont.value ? formatContinuity(r.value) : formatValue(r.value, r.unit)
+  return formatReading(r)
 })
 
 const overload = computed(() => store.lastReading?.overload ?? false)
@@ -104,7 +104,7 @@ const stats = computed(() => {
   const max = Math.max(...vals)
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length
   const unit = store.lastReading?.unit ?? ''
-  const fmt = isCont.value ? formatContinuity : (v: number) => formatValue(v, unit)
+  const fmt = (v: number) => formatReading({ value: v, unit, function: fn })
   return {
     min: fmt(min),
     max: fmt(max),

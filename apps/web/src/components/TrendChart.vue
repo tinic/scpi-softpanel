@@ -4,7 +4,7 @@ import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import type { Reading } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
-import { formatContinuity, formatValue } from '@/lib/format'
+import { formatReading } from '@/lib/format'
 
 const store = useMeterStore()
 const el = ref<HTMLDivElement | null>(null)
@@ -38,8 +38,7 @@ function clearTrend(): void {
   plot?.setData(buildData())
 }
 
-const fmt = (r: Reading) =>
-  r.function === 'CONT' ? formatContinuity(r.value) : formatValue(r.value, r.unit)
+const fmt = (r: Reading) => formatReading(r)
 
 // uPlot's default tick labels round to a few significant digits, which collapses
 // every label to the same string when the visible spread is tiny relative to the
