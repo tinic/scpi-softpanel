@@ -3,26 +3,22 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import type { Reading } from '@scpi/shared'
-import { useMeterStore } from '@/stores/meter'
+import { useChartWindow } from '@/composables/useChartWindow'
 import { formatReading } from '@/lib/format'
 
-const store = useMeterStore()
+const { windowed } = useChartWindow()
 const el = ref<HTMLDivElement | null>(null)
 const WINDOW = 600
 
 let plot: uPlot | null = null
 let ro: ResizeObserver | null = null
 
-// Baseline timestamp: readings before it are hidden, so advancing it clears the trend
-// (same idea as the min/avg/max `statsSince` marker — purely a view filter, the ring
-// itself is untouched).
-const trendSince = ref(0)
-// The readings currently plotted (after the filter/slice below), so the hover tooltip
-// can map a point index back to its full Reading for unit-aware formatting.
+// The readings currently plotted, so the hover tooltip can map a point index back
+// to its full Reading for unit-aware formatting.
 let view: Reading[] = []
 
 function buildData(): uPlot.AlignedData {
-  const r = store.readings.filter((d) => d.ts >= trendSince.value).slice(-WINDOW)
+  const r = windowed.value.slice(-WINDOW)
   view = r
   const xs = new Array<number>(r.length)
   const ys = new Array<number | null>(r.length)
@@ -31,11 +27,6 @@ function buildData(): uPlot.AlignedData {
     ys[i] = Number.isFinite(r[i].value) ? r[i].value : null
   }
   return [xs, ys]
-}
-
-function clearTrend(): void {
-  trendSince.value = store.readings.at(-1)?.ts ?? Date.now()
-  plot?.setData(buildData())
 }
 
 const fmt = (r: Reading) => formatReading(r)
@@ -130,17 +121,15 @@ onMounted(() => {
   const width = el.value.clientWidth || 600
   plot = new uPlot(options(width), buildData(), el.value)
   ro = new ResizeObserver(() => {
-    // Skip zero-width (e.g. while collapsed) so the chart restores cleanly on expand.
+    // Skip zero-width (e.g. while collapsed or on the other tab) so the chart
+    // restores cleanly when shown again.
     const w = el.value?.clientWidth ?? 0
     if (plot && w > 0) plot.setSize({ width: w, height: 280 })
   })
   ro.observe(el.value)
 })
 
-watch(
-  () => store.readings,
-  () => plot?.setData(buildData()),
-)
+watch(windowed, () => plot?.setData(buildData()))
 
 onBeforeUnmount(() => {
   ro?.disconnect()
@@ -149,40 +138,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="trend">
-    <button class="clear" title="Clear trend" @click="clearTrend">↺</button>
-    <div ref="el" class="chart" />
-  </div>
+  <div ref="el" class="chart" />
 </template>
 
 <style scoped>
-.trend {
-  position: relative;
-  width: 100%;
-}
 .chart {
   width: 100%;
-}
-.clear {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 2;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--muted);
-  opacity: 0.7;
-}
-.clear:hover {
-  color: var(--text);
-  opacity: 1;
 }
 
 /* The tooltip is created imperatively inside uPlot's overlay, so it needs :deep to

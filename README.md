@@ -13,7 +13,7 @@ It ships two ways from one codebase:
 ![SCPI SoftPanel reading a live SDM3045X](docs/screenshot.png)
 
 Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
-controls, a trend chart, a raw-SCPI console, and a continuity tone.
+controls, tabbed trend & histogram charts, a raw-SCPI console, and a continuity tone.
 
 ## Download
 

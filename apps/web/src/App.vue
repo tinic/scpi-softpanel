@@ -5,7 +5,7 @@ import StatusBar from '@/components/StatusBar.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 import LiveReading from '@/components/LiveReading.vue'
 import ControlPanel from '@/components/ControlPanel.vue'
-import TrendChart from '@/components/TrendChart.vue'
+import ChartPanel from '@/components/ChartPanel.vue'
 import RawConsole from '@/components/RawConsole.vue'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
 
@@ -43,9 +43,7 @@ onMounted(() => store.connect())
         <ControlPanel />
       </section>
       <section class="card area-trend">
-        <CollapsibleSection title="Trend">
-          <TrendChart />
-        </CollapsibleSection>
+        <ChartPanel />
       </section>
       <section class="card area-console">
         <CollapsibleSection title="SCPI Console" :default-open="false">
