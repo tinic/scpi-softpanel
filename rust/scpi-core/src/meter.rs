@@ -25,6 +25,12 @@ pub enum Command {
     SetAutoRange(bool),
     SetNplc(f64),
     SetContThreshold(f64),
+    SetNull {
+        enabled: bool,
+        value: f64,
+    },
+    SetAcBandwidth(f64),
+    SetFreqAperture(f64),
     SetPolling(bool),
     /// Open (true) or close (false) the instrument session.
     SetConnected(bool),
@@ -88,6 +94,10 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         auto_range: None,
         nplc: None,
         cont_threshold: None,
+        null_enabled: false,
+        null_value: None,
+        ac_bandwidth: None,
+        freq_aperture: None,
         polling: cfg.poll_autostart,
         interval_ms: cfg.poll_interval_ms,
         last_error: None,
@@ -282,6 +292,9 @@ impl Meter {
             Command::SetAutoRange(on) => self.set_auto_range(on).await,
             Command::SetNplc(n) => self.set_nplc(n).await,
             Command::SetContThreshold(o) => self.set_cont_threshold(o).await,
+            Command::SetNull { enabled, value } => self.set_null(enabled, value).await,
+            Command::SetAcBandwidth(hz) => self.set_ac_bandwidth(hz).await,
+            Command::SetFreqAperture(s) => self.set_freq_aperture(s).await,
             Command::MeasureOnce => self.measure_once().await,
             Command::Refresh => self.refresh_config_checked().await,
             Command::Raw { cmd, expect_reply } => self.raw(&cmd, expect_reply).await,
@@ -371,6 +384,72 @@ impl Meter {
         }
         self.command(&format!("CONT:THR:VAL {ohms}")).await?;
         self.state.cont_threshold = self.query_num("CONT:THR:VAL?").await?.or(Some(ohms));
+        self.publish();
+        Ok(())
+    }
+
+    /// Relative/Null: subtract a stored offset. Per function; the meter does the
+    /// subtraction so all downstream readings come back already relative. Bare `:NULL`
+    /// aliases to `:NULL:STATe`, so the value uses the explicit `:NULL:VAL`.
+    async fn set_null(&mut self, enabled: bool, value: f64) -> std::io::Result<()> {
+        let Some(sense) = self.current_sense_for(|_| true) else {
+            self.console(
+                Direction::Error,
+                "relative/null not available for this function",
+            );
+            return Ok(());
+        };
+        if enabled {
+            self.command(&format!("SENS:{sense}:NULL:VAL {value}"))
+                .await?;
+            self.command(&format!("SENS:{sense}:NULL:STAT ON")).await?;
+        } else {
+            self.command(&format!("SENS:{sense}:NULL:STAT OFF")).await?;
+        }
+        self.state.null_enabled = self
+            .query_bool(&format!("SENS:{sense}:NULL:STAT?"))
+            .await
+            .unwrap_or(false);
+        self.state.null_value = self.query_num(&format!("SENS:{sense}:NULL:VAL?")).await?;
+        self.publish();
+        Ok(())
+    }
+
+    /// AC low-frequency filter (ACV/ACI), in Hz.
+    async fn set_ac_bandwidth(&mut self, hz: f64) -> std::io::Result<()> {
+        let sense = match self.state.function {
+            Some(MeterFunction::VoltAc) => "VOLT:AC",
+            Some(MeterFunction::CurrAc) => "CURR:AC",
+            _ => {
+                self.console(
+                    Direction::Error,
+                    "AC bandwidth only applies to AC functions",
+                );
+                return Ok(());
+            }
+        };
+        self.command(&format!("SENS:{sense}:BAND {hz}")).await?;
+        self.state.ac_bandwidth = self.query_band(&format!("SENS:{sense}:BAND?")).await;
+        self.publish();
+        Ok(())
+    }
+
+    /// Frequency/period gate time (aperture), in seconds.
+    async fn set_freq_aperture(&mut self, seconds: f64) -> std::io::Result<()> {
+        let sense = match self.state.function {
+            Some(MeterFunction::Freq) => "FREQ",
+            Some(MeterFunction::Per) => "PER",
+            _ => {
+                self.console(
+                    Direction::Error,
+                    "gate time only applies to frequency/period",
+                );
+                return Ok(());
+            }
+        };
+        self.command(&format!("SENS:{sense}:APER {seconds}"))
+            .await?;
+        self.state.freq_aperture = self.query_num(&format!("SENS:{sense}:APER?")).await?;
         self.publish();
         Ok(())
     }
@@ -467,6 +546,33 @@ impl Meter {
             } else {
                 None
             };
+            // Relative/Null (per function; the meter turns it off after a CONFigure).
+            if let Some(sense) = info.sense {
+                self.state.null_enabled = self
+                    .query_bool(&format!("SENS:{sense}:NULL:STAT?"))
+                    .await
+                    .unwrap_or(false);
+                self.state.null_value = self
+                    .query_num(&format!("SENS:{sense}:NULL:VAL?"))
+                    .await
+                    .ok()
+                    .flatten();
+            } else {
+                self.state.null_enabled = false;
+                self.state.null_value = None;
+            }
+            // AC filter bandwidth (AC functions only).
+            self.state.ac_bandwidth = match f {
+                MeterFunction::VoltAc => self.query_band("SENS:VOLT:AC:BAND?").await,
+                MeterFunction::CurrAc => self.query_band("SENS:CURR:AC:BAND?").await,
+                _ => None,
+            };
+            // Gate time / aperture (frequency & period only).
+            self.state.freq_aperture = match f {
+                MeterFunction::Freq => self.query_num("SENS:FREQ:APER?").await.ok().flatten(),
+                MeterFunction::Per => self.query_num("SENS:PER:APER?").await.ok().flatten(),
+                _ => None,
+            };
         }
         self.publish();
     }
@@ -487,6 +593,17 @@ impl Meter {
         let reply = self.session.as_mut().unwrap().query(cmd).await.ok()?;
         let t = reply.trim().to_uppercase();
         Some(t == "1" || t == "ON")
+    }
+
+    /// Parse an AC-bandwidth reply like "20Hz" into its numeric value.
+    async fn query_band(&mut self, cmd: &str) -> Option<f64> {
+        let reply = self.session.as_mut().unwrap().query(cmd).await.ok()?;
+        reply
+            .trim()
+            .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+            .trim()
+            .parse::<f64>()
+            .ok()
     }
 
     fn current_sense_for(

@@ -52,6 +52,12 @@ export interface FunctionInfo {
  */
 export const NPLC_CHOICES = [0.3, 1, 10] as const
 
+/** Low-frequency AC filter (Hz) for ACV/ACI — the slowest passes the lowest freqs. */
+export const AC_BANDWIDTHS = [3, 20, 200] as const
+
+/** Frequency/period gate time (aperture), in seconds. Longer = more resolution. */
+export const FREQ_APERTURES = [0.01, 0.1, 1] as const
+
 export const FUNCTION_INFO: Record<MeterFunction, FunctionInfo> = {
   'VOLT:DC': {
     id: 'VOLT:DC',

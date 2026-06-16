@@ -101,6 +101,9 @@ export const useMeterStore = defineStore('meter', () => {
   const setAutoRange = (enabled: boolean) => send({ type: 'setAutoRange', enabled })
   const setNplc = (nplc: number) => send({ type: 'setNplc', nplc })
   const setContThreshold = (ohms: number) => send({ type: 'setContThreshold', ohms })
+  const setNull = (enabled: boolean, value: number) => send({ type: 'setNull', enabled, value })
+  const setAcBandwidth = (hz: number) => send({ type: 'setAcBandwidth', hz })
+  const setFreqAperture = (seconds: number) => send({ type: 'setFreqAperture', seconds })
   const setPolling = (enabled: boolean) => send({ type: 'setPolling', enabled })
   const setConnected = (enabled: boolean) => send({ type: 'setConnected', enabled })
   const setInterval = (intervalMs: number) => send({ type: 'setInterval', intervalMs })
@@ -136,6 +139,9 @@ export const useMeterStore = defineStore('meter', () => {
     setAutoRange,
     setNplc,
     setContThreshold,
+    setNull,
+    setAcBandwidth,
+    setFreqAperture,
     setPolling,
     setConnected,
     setInterval,

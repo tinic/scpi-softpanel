@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FUNCTION_INFO, METER_FUNCTIONS, NPLC_CHOICES } from '@scpi/shared'
+import {
+  AC_BANDWIDTHS,
+  FREQ_APERTURES,
+  FUNCTION_INFO,
+  METER_FUNCTIONS,
+  NPLC_CHOICES,
+} from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
-import { formatRangeLabel } from '@/lib/format'
+import { formatRangeLabel, formatValue } from '@/lib/format'
 import { useTempUnit } from '@/composables/useTempUnit'
 import type { TempUnit } from '@/lib/format'
 
@@ -34,6 +40,33 @@ const activeRange = computed(() => {
   const r = store.state?.range
   return r && r !== 'AUTO' ? Number.parseFloat(r) : null
 })
+
+const isAc = computed(
+  () => store.state?.function === 'VOLT:AC' || store.state?.function === 'CURR:AC',
+)
+const isFreqLike = computed(
+  () => store.state?.function === 'FREQ' || store.state?.function === 'PER',
+)
+const apertureLabel = (s: number) => (s < 1 ? `${Math.round(s * 1000)} ms` : `${s} s`)
+
+// Relative/Null applies to any function with a SENSe subsystem (not CONT/DIOD).
+const supportsNull = computed(() => !!currentInfo.value?.sense)
+const nullEnabled = computed(() => store.state?.nullEnabled ?? false)
+const nullOffset = computed(() => {
+  const v = store.state?.nullValue
+  if (v == null || !currentInfo.value) return ''
+  const f = formatValue(v, currentInfo.value.unit)
+  return `${f.sign}${f.text} ${f.unit}`
+})
+
+function tare() {
+  const cur = store.lastReading?.value
+  if (cur == null || !Number.isFinite(cur)) return
+  // Offset that zeroes the current reading. When relative is already on, the live
+  // value is itself relative, so add the existing offset back to recover the absolute.
+  const base = nullEnabled.value ? (store.state?.nullValue ?? 0) : 0
+  store.setNull(true, base + cur)
+}
 </script>
 
 <template>
@@ -68,6 +101,34 @@ const activeRange = computed(() => {
           @click="store.setRange(String(r))"
         >
           {{ formatRangeLabel(r, currentInfo.unit) }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="isAc" class="row">
+      <label>AC filter</label>
+      <div class="seg">
+        <button
+          v-for="b in AC_BANDWIDTHS"
+          :key="b"
+          :class="{ primary: store.state?.acBandwidth === b }"
+          @click="store.setAcBandwidth(b)"
+        >
+          {{ b }} Hz
+        </button>
+      </div>
+    </div>
+
+    <div v-if="isFreqLike" class="row">
+      <label>Gate</label>
+      <div class="seg">
+        <button
+          v-for="a in FREQ_APERTURES"
+          :key="a"
+          :class="{ primary: store.state?.freqAperture === a }"
+          @click="store.setFreqAperture(a)"
+        >
+          {{ apertureLabel(a) }}
         </button>
       </div>
     </div>
@@ -111,6 +172,26 @@ const activeRange = computed(() => {
         >
           {{ p }}
         </button>
+      </div>
+    </div>
+
+    <div v-if="supportsNull" class="row">
+      <label>Relative</label>
+      <div class="rel">
+        <button
+          class="rel-btn"
+          :class="{ primary: nullEnabled }"
+          title="Zero against the current reading (tare)"
+          @click="tare"
+        >
+          Δ Tare
+        </button>
+        <template v-if="nullEnabled">
+          <span class="ref" title="Offset being subtracted">ref {{ nullOffset }}</span>
+          <button class="rel-clear" title="Clear relative" @click="store.setNull(false, 0)">
+            ✕
+          </button>
+        </template>
       </div>
     </div>
 
@@ -160,6 +241,37 @@ const activeRange = computed(() => {
 }
 .seg button.wide {
   grid-column: span 2;
+}
+.rel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rel-btn {
+  padding: 6px 14px;
+}
+.ref {
+  font-family: 'Iosevka', ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.rel-clear {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.rel-clear:hover {
+  color: var(--text);
 }
 /* The AC/DC waveform marks read too small at text size; scale just the symbol. */
 .sym {

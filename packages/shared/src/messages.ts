@@ -27,6 +27,13 @@ export const MeterStateSchema = z.object({
   nplc: z.number().nullable(),
   // CONT only; the instrument resets it to 50 Ω on every CONFigure.
   contThreshold: z.number().nullable(),
+  // Relative/Null offset (per function; the meter subtracts nullValue when enabled).
+  nullEnabled: z.boolean().default(false),
+  nullValue: z.number().nullable().default(null),
+  // AC functions only: low-frequency AC filter, in Hz (3 / 20 / 200).
+  acBandwidth: z.number().nullable().default(null),
+  // FREQ/PER only: gate time (aperture), in seconds (0.01 / 0.1 / 1).
+  freqAperture: z.number().nullable().default(null),
   polling: z.boolean(),
   intervalMs: z.number(),
   lastError: z.string().nullable(),
@@ -43,6 +50,9 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setAutoRange'), enabled: z.boolean() }),
   z.object({ type: z.literal('setNplc'), nplc: z.number().positive() }),
   z.object({ type: z.literal('setContThreshold'), ohms: z.number().min(0).max(2000) }),
+  z.object({ type: z.literal('setNull'), enabled: z.boolean(), value: z.number() }),
+  z.object({ type: z.literal('setAcBandwidth'), hz: z.number() }),
+  z.object({ type: z.literal('setFreqAperture'), seconds: z.number().positive() }),
   z.object({ type: z.literal('setPolling'), enabled: z.boolean() }),
   z.object({ type: z.literal('setConnected'), enabled: z.boolean() }),
   z.object({ type: z.literal('setInterval'), intervalMs: z.number().int().min(50).max(60000) }),

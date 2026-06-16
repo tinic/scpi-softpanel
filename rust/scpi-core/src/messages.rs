@@ -39,6 +39,13 @@ pub struct MeterState {
     pub nplc: Option<f64>,
     /// CONT only; reset to 50 Ω by the meter on every CONFigure.
     pub cont_threshold: Option<f64>,
+    /// Relative/Null: whether the offset is active, and its value (per function).
+    pub null_enabled: bool,
+    pub null_value: Option<f64>,
+    /// AC functions only: low-frequency AC filter in Hz (3 / 20 / 200).
+    pub ac_bandwidth: Option<f64>,
+    /// FREQ/PER only: gate time (aperture) in seconds (0.01 / 0.1 / 1).
+    pub freq_aperture: Option<f64>,
     pub polling: bool,
     pub interval_ms: u64,
     pub last_error: Option<String>,
@@ -100,6 +107,16 @@ pub enum ClientMessage {
     },
     SetContThreshold {
         ohms: f64,
+    },
+    SetNull {
+        enabled: bool,
+        value: f64,
+    },
+    SetAcBandwidth {
+        hz: f64,
+    },
+    SetFreqAperture {
+        seconds: f64,
     },
     SetPolling {
         enabled: bool,
