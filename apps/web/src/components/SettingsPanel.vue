@@ -56,7 +56,7 @@ watch(open, (isOpen) => {
   <div v-if="open" class="backdrop" @click.self="open = false">
     <div class="dialog">
       <h2>Instrument</h2>
-      <p class="hint">Address of the SCPI instrument (raw socket). The app reconnects on save.</p>
+      <p class="hint">Address of the SCPI instrument (raw socket).</p>
       <label>
         Host
         <input v-model="host" type="text" placeholder="e.g. 192.168.1.50" spellcheck="false" />
