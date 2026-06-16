@@ -20,6 +20,7 @@ onMounted(() => store.connect())
       <div class="topbar-right">
         <StatusBar />
         <button
+          v-if="store.state?.resource"
           class="conn"
           :class="store.state?.enabled ? 'danger' : 'primary'"
           :title="

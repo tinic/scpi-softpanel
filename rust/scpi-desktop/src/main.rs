@@ -77,14 +77,15 @@ fn config_path() -> Option<std::path::PathBuf> {
 fn meter_config(config_path: Option<&std::path::Path>) -> MeterConfig {
     let (host, port) = match config_path.and_then(scpi_server::config::load) {
         Some(p) => (p.meter_host, p.meter_port),
+        // First launch: no persisted target and no baked-in IP — start with no host
+        // so the UI prompts for one (env can still pre-seed it for power users).
         None => {
-            let host = env("METER_HOST", "192.168.1.166");
+            let host = env("METER_HOST", "");
             let port = env("METER_PORT", "5025").parse().unwrap_or(5025);
             (host, port)
         }
     };
     MeterConfig {
-        resource: format!("TCPIP::{host}::{port}::SOCKET"),
         host,
         port,
         timeout: Duration::from_millis(env("METER_TIMEOUT_MS", "5000").parse().unwrap_or(5000)),

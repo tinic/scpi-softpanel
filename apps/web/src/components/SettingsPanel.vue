@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useMeterStore } from '@/stores/meter'
 
 const store = useMeterStore()
@@ -14,6 +14,20 @@ async function show() {
   port.value = cfg.meterPort
   open.value = true
 }
+
+// First launch / no instrument configured → prompt for one automatically.
+onMounted(async () => {
+  try {
+    const cfg = await store.getConfig()
+    if (!cfg.meterHost?.trim()) {
+      host.value = ''
+      port.value = cfg.meterPort || 5025
+      open.value = true
+    }
+  } catch {
+    /* server not reachable yet; the gear is always available */
+  }
+})
 
 async function save() {
   if (!host.value.trim()) return
@@ -45,7 +59,7 @@ watch(open, (isOpen) => {
       <p class="hint">Address of the SCPI instrument (raw socket). The app reconnects on save.</p>
       <label>
         Host
-        <input v-model="host" type="text" placeholder="192.168.1.166" spellcheck="false" />
+        <input v-model="host" type="text" placeholder="e.g. 192.168.1.50" spellcheck="false" />
       </label>
       <label>
         Port

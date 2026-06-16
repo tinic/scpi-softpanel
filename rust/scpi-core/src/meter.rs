@@ -43,15 +43,25 @@ pub enum Command {
 }
 
 pub struct MeterConfig {
+    /// Instrument host. **Empty means no target is configured** — the meter idles
+    /// (no connection attempts) until a host is set via `SetTarget` / the settings UI.
     pub host: String,
     pub port: u16,
-    /// Human-facing resource string shown in state (e.g. `TCPIP::host::5025::SOCKET`).
-    pub resource: String,
     pub timeout: Duration,
     pub poll_interval_ms: u64,
     pub poll_autostart: bool,
     pub reconnect_delay: Duration,
     pub ring_capacity: usize,
+}
+
+/// The VISA resource string for a host/port, or None when no host is configured.
+fn resource_for(host: &str, port: u16) -> Option<String> {
+    let host = host.trim();
+    if host.is_empty() {
+        None
+    } else {
+        Some(format!("TCPIP::{host}::{port}::SOCKET"))
+    }
 }
 
 /// Cloneable handle the server layer uses to talk to the meter task.
@@ -70,9 +80,9 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
 
     let state = MeterState {
         connected: false,
-        enabled: true, // start by trying to connect
+        enabled: true, // try to connect once a target is configured
         idn: None,
-        resource: Some(cfg.resource.clone()),
+        resource: resource_for(&cfg.host, cfg.port),
         function: None,
         range: None,
         auto_range: None,
@@ -121,8 +131,10 @@ impl Meter {
     async fn run(mut self, mut cmd_rx: mpsc::Receiver<Command>) {
         loop {
             let idle = Instant::now() + Duration::from_secs(3600);
-            let deadline = if !self.state.enabled {
-                idle // user disconnected: don't reconnect or poll
+            // Idle when the user disconnected OR no instrument target is configured.
+            let active = self.state.enabled && self.has_target();
+            let deadline = if !active {
+                idle
             } else if self.session.is_none() {
                 self.next_reconnect
             } else if self.state.polling {
@@ -137,7 +149,7 @@ impl Meter {
                     None => break, // every sender dropped → shut down
                 },
                 _ = sleep_until(deadline) => {
-                    if !self.state.enabled {
+                    if !active {
                         // idle
                     } else if self.session.is_none() {
                         self.try_connect().await;
@@ -155,13 +167,15 @@ impl Meter {
 
     // -- connection ----------------------------------------------------------
 
+    fn has_target(&self) -> bool {
+        !self.cfg.host.trim().is_empty()
+    }
+
     async fn try_connect(&mut self) {
         // Raw-socket connect is itself a gentle TCP probe — unlike VXI-11/RPC it
         // won't wedge a booting meter, so no separate probe/boot-settle is needed.
-        self.console(
-            Direction::Info,
-            &format!("connecting {}", self.cfg.resource),
-        );
+        let resource = resource_for(&self.cfg.host, self.cfg.port).unwrap_or_default();
+        self.console(Direction::Info, &format!("connecting {resource}"));
         match ScpiSession::connect(&self.cfg.host, self.cfg.port, self.cfg.timeout).await {
             Ok((session, idn)) => {
                 self.session = Some(session);
@@ -238,19 +252,19 @@ impl Meter {
                 return;
             }
             Command::SetTarget { host, port } => {
-                // Drop the current session and reconnect to the new instrument now.
+                // Drop the current session and reconnect to the new instrument now
+                // (or idle, if the host was cleared).
                 self.session = None;
                 self.state.connected = false;
                 self.state.idn = None;
                 self.cfg.host = host;
                 self.cfg.port = port;
-                self.cfg.resource = format!("TCPIP::{}::{}::SOCKET", self.cfg.host, self.cfg.port);
-                self.state.resource = Some(self.cfg.resource.clone());
+                self.state.resource = resource_for(&self.cfg.host, self.cfg.port);
                 self.next_reconnect = Instant::now();
-                self.console(
-                    Direction::Info,
-                    &format!("retargeting to {}", self.cfg.resource),
-                );
+                match &self.state.resource {
+                    Some(r) => self.console(Direction::Info, &format!("retargeting to {r}")),
+                    None => self.console(Direction::Info, "no instrument configured"),
+                }
                 self.publish();
                 return;
             }

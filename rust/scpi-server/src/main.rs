@@ -33,7 +33,6 @@ async fn main() {
     };
 
     let handle = spawn(MeterConfig {
-        resource: format!("TCPIP::{meter_host}::{meter_port}::SOCKET"),
         host: meter_host,
         port: meter_port,
         timeout: Duration::from_millis(cfg.meter_timeout_ms),
@@ -97,7 +96,8 @@ impl Config {
         Config {
             host: env("HOST", "0.0.0.0"),
             port: env("PORT", "8080").parse().unwrap_or(8080),
-            meter_host: env("METER_HOST", "192.168.1.166"),
+            // No baked-in default IP: empty host => no target until configured.
+            meter_host: env("METER_HOST", ""),
             meter_port: env("METER_PORT", "5025").parse().unwrap_or(5025),
             meter_timeout_ms: env("METER_TIMEOUT_MS", "5000").parse().unwrap_or(5000),
             poll_interval_ms: env("POLL_INTERVAL_MS", "100").parse().unwrap_or(100),
