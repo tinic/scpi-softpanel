@@ -19,3 +19,6 @@ tracing-subscriber.workspace = true
 rust-embed = "8"
 mime_guess = "2"
 dirs = "5"
+# Native "Save As" dialog for webview downloads. GTK3 backend on Linux (matches
+# Tauri's toolkit, no xdg-portal dependency); native dialogs on Windows/macOS.
+rfd = { version = "0.15", default-features = false, features = ["gtk3"] }

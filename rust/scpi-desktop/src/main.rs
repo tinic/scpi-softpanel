@@ -60,11 +60,35 @@ fn main() {
             .title("SCPI SoftPanel")
             .inner_size(1280.0, 820.0)
             .min_inner_size(900.0, 600.0)
+            .on_download(on_download)
             .build()?;
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Webview download handler. WRY downloads are disabled until a handler is set;
+/// here we pop a native "Save As" dialog and download to the chosen path. (In a
+/// plain browser the `<a download>` link handles this itself; this only matters in
+/// the desktop webview.)
+fn on_download(_webview: tauri::Webview, event: tauri::webview::DownloadEvent<'_>) -> bool {
+    match event {
+        tauri::webview::DownloadEvent::Requested { destination, .. } => {
+            match rfd::FileDialog::new()
+                .set_file_name("scpi-readings.csv")
+                .add_filter("CSV", &["csv"])
+                .save_file()
+            {
+                Some(path) => {
+                    *destination = path;
+                    true // proceed with the download to the chosen path
+                }
+                None => false, // user cancelled
+            }
+        }
+        _ => true,
+    }
 }
 
 /// Path to the persisted settings file in the OS config dir, e.g.
