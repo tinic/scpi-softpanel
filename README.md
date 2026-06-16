@@ -15,6 +15,39 @@ It ships two ways from one codebase:
 Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
 controls, a trend chart, a raw-SCPI console, and a continuity tone.
 
+## Quick start (Docker)
+
+Run the headless server from the prebuilt image — no clone, no build. Save this as
+`docker-compose.yml` (it's also in the repo root) and `docker compose up -d`:
+
+```yaml
+services:
+  scpi-softpanel:
+    image: ghcr.io/tinic/scpi-softpanel:latest
+    restart: unless-stopped
+    ports: ['8080:8080']
+    environment:
+      METER_HOST: '' # your instrument's IP, or leave empty to set it in the UI
+      METER_PORT: '5025'
+    volumes: ['scpi-data:/data']
+volumes:
+  scpi-data:
+```
+
+Then open <http://localhost:8080> and point it at your instrument (the gear icon, or
+the `METER_HOST` env above). Settings persist in the `scpi-data` volume.
+
+Or without a compose file:
+
+```bash
+docker run -d -p 8080:8080 -v scpi-data:/data \
+  -e METER_HOST=192.168.1.50 ghcr.io/tinic/scpi-softpanel:latest
+```
+
+Images are published to GHCR for `linux/amd64` + `linux/arm64` on every release. Prefer
+a native desktop app? Grab an installer from the [releases](../../releases) (see
+[unsigned builds & self-signing](#unsigned-builds--self-signing)).
+
 ## Architecture
 
 ```

@@ -1,0 +1,21 @@
+# Run SCPI SoftPanel's headless server from the prebuilt image — no clone, no build.
+#   docker compose up -d
+# then open http://localhost:8080 and point it at your instrument (gear icon),
+# or set METER_HOST below. Settings persist in the scpi-data volume.
+services:
+  scpi-softpanel:
+    image: ghcr.io/tinic/scpi-softpanel:latest
+    container_name: scpi-softpanel
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      # Your instrument's IP. Leave empty to configure it in the web UI instead
+      # (the choice is saved to the scpi-data volume below).
+      METER_HOST: ''
+      METER_PORT: '5025'
+    volumes:
+      - scpi-data:/data
+
+volumes:
+  scpi-data:
