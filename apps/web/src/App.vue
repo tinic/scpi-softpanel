@@ -10,13 +10,18 @@ import RawConsole from '@/components/RawConsole.vue'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
 
 const store = useMeterStore()
+const version = __APP_VERSION__
+const buildDate = __BUILD_DATE__
 onMounted(() => store.connect())
 </script>
 
 <template>
   <div class="app">
     <header class="topbar">
-      <h1>SCPI <span>SoftPanel</span></h1>
+      <h1>
+        SCPI <span>SoftPanel</span>
+        <span class="ver">v{{ version }} · {{ buildDate }}</span>
+      </h1>
       <div class="topbar-right">
         <StatusBar />
         <button
@@ -87,6 +92,14 @@ h1 {
 }
 h1 span {
   color: var(--accent);
+}
+h1 .ver {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-left: 8px;
+  vertical-align: baseline;
 }
 .grid {
   display: grid;
