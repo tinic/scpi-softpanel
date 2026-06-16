@@ -2,7 +2,7 @@
   "name": "scpi-softpanel",
   "version": "0.3.0",
   "private": true,
-  "description": "Control panel for SCPI bench instruments (Siglent SDM3045X): Vue 3 web UI served by a Rust core (headless server + Tauri desktop app).",
+  "description": "Control panel for the Siglent SDM3045X bench multimeter — live readout, trend & histogram charts, and CSV logging, from your browser or a desktop app.",
   "license": "MIT",
   "packageManager": "pnpm@9.12.0",
   "engines": {
