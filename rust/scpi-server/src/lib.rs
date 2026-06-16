@@ -190,6 +190,7 @@ fn to_command(msg: ClientMessage) -> Command {
         ClientMessage::SetNplc { nplc } => Command::SetNplc(nplc),
         ClientMessage::SetContThreshold { ohms } => Command::SetContThreshold(ohms),
         ClientMessage::SetPolling { enabled } => Command::SetPolling(enabled),
+        ClientMessage::SetConnected { enabled } => Command::SetConnected(enabled),
         ClientMessage::SetInterval { interval_ms } => Command::SetInterval(interval_ms),
         ClientMessage::MeasureOnce => Command::MeasureOnce,
         ClientMessage::Refresh => Command::Refresh,

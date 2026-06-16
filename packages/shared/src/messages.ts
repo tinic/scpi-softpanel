@@ -17,6 +17,8 @@ export type Reading = z.infer<typeof ReadingSchema>
 /** Full instrument + broker state, broadcast on change. */
 export const MeterStateSchema = z.object({
   connected: z.boolean(),
+  enabled: z.boolean(), // false = user disconnected; socket closed, panel free
+
   idn: z.string().nullable(),
   resource: z.string().nullable(),
   function: MeterFunctionSchema.nullable(),
@@ -42,6 +44,7 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setNplc'), nplc: z.number().positive() }),
   z.object({ type: z.literal('setContThreshold'), ohms: z.number().min(0).max(2000) }),
   z.object({ type: z.literal('setPolling'), enabled: z.boolean() }),
+  z.object({ type: z.literal('setConnected'), enabled: z.boolean() }),
   z.object({ type: z.literal('setInterval'), intervalMs: z.number().int().min(50).max(60000) }),
   z.object({ type: z.literal('measureOnce') }),
   z.object({ type: z.literal('refresh') }),

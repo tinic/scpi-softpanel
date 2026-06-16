@@ -102,6 +102,7 @@ export const useMeterStore = defineStore('meter', () => {
   const setNplc = (nplc: number) => send({ type: 'setNplc', nplc })
   const setContThreshold = (ohms: number) => send({ type: 'setContThreshold', ohms })
   const setPolling = (enabled: boolean) => send({ type: 'setPolling', enabled })
+  const setConnected = (enabled: boolean) => send({ type: 'setConnected', enabled })
   const setInterval = (intervalMs: number) => send({ type: 'setInterval', intervalMs })
   const measureOnce = () => send({ type: 'measureOnce' })
   const refresh = () => send({ type: 'refresh' })
@@ -136,6 +137,7 @@ export const useMeterStore = defineStore('meter', () => {
     setNplc,
     setContThreshold,
     setPolling,
+    setConnected,
     setInterval,
     measureOnce,
     refresh,

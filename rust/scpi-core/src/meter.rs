@@ -26,6 +26,8 @@ pub enum Command {
     SetNplc(f64),
     SetContThreshold(f64),
     SetPolling(bool),
+    /// Open (true) or close (false) the instrument session.
+    SetConnected(bool),
     SetInterval(u64),
     /// Point the meter at a different instrument (host/port) and reconnect.
     SetTarget {
@@ -68,6 +70,7 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
 
     let state = MeterState {
         connected: false,
+        enabled: true, // start by trying to connect
         idn: None,
         resource: Some(cfg.resource.clone()),
         function: None,
@@ -117,12 +120,15 @@ struct Meter {
 impl Meter {
     async fn run(mut self, mut cmd_rx: mpsc::Receiver<Command>) {
         loop {
-            let deadline = if self.session.is_none() {
+            let idle = Instant::now() + Duration::from_secs(3600);
+            let deadline = if !self.state.enabled {
+                idle // user disconnected: don't reconnect or poll
+            } else if self.session.is_none() {
                 self.next_reconnect
             } else if self.state.polling {
                 self.next_poll
             } else {
-                Instant::now() + Duration::from_secs(3600)
+                idle
             };
 
             tokio::select! {
@@ -131,7 +137,9 @@ impl Meter {
                     None => break, // every sender dropped → shut down
                 },
                 _ = sleep_until(deadline) => {
-                    if self.session.is_none() {
+                    if !self.state.enabled {
+                        // idle
+                    } else if self.session.is_none() {
                         self.try_connect().await;
                         self.next_reconnect = Instant::now() + self.cfg.reconnect_delay;
                         self.next_poll = Instant::now();
@@ -157,6 +165,8 @@ impl Meter {
         match ScpiSession::connect(&self.cfg.host, self.cfg.port, self.cfg.timeout).await {
             Ok((session, idn)) => {
                 self.session = Some(session);
+                // Clear any stale status/error queue so we start from a clean slate.
+                let _ = self.session.as_mut().unwrap().write("*CLS").await;
                 self.state.connected = true;
                 self.state.idn = Some(idn.clone());
                 self.state.last_error = None;
@@ -205,6 +215,28 @@ impl Meter {
                 self.publish();
                 return;
             }
+            Command::SetConnected(on) => {
+                if on {
+                    self.state.enabled = true;
+                    self.next_reconnect = Instant::now(); // reconnect promptly
+                    self.console(Direction::Info, "connecting");
+                } else {
+                    self.state.enabled = false;
+                    // Drop the session → the TCP socket closes, releasing the control
+                    // link. The SDM3045X has no SCPI local/remote command (SYST:LOC /
+                    // REM / RWL all return -113), so the user presses the meter's
+                    // Run/Stop key to return it to local control (user manual §p89).
+                    self.session = None;
+                    self.state.connected = false;
+                    self.state.idn = None;
+                    self.console(
+                        Direction::Info,
+                        "disconnected — press Run/Stop on the meter for local control",
+                    );
+                }
+                self.publish();
+                return;
+            }
             Command::SetTarget { host, port } => {
                 // Drop the current session and reconnect to the new instrument now.
                 self.session = None;
@@ -240,7 +272,10 @@ impl Meter {
             Command::Refresh => self.refresh_config_checked().await,
             Command::Raw { cmd, expect_reply } => self.raw(&cmd, expect_reply).await,
             // Handled in the early match above (they return before reaching here).
-            Command::SetPolling(_) | Command::SetInterval(_) | Command::SetTarget { .. } => Ok(()),
+            Command::SetPolling(_)
+            | Command::SetInterval(_)
+            | Command::SetConnected(_)
+            | Command::SetTarget { .. } => Ok(()),
         };
         if let Err(e) = result {
             self.drop_session("command", &e);

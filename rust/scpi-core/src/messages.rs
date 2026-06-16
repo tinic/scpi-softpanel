@@ -27,6 +27,9 @@ pub struct Reading {
 #[serde(rename_all = "camelCase")]
 pub struct MeterState {
     pub connected: bool,
+    /// Whether the broker wants a session at all. False = user disconnected; the
+    /// socket is closed and the instrument is free for front-panel use.
+    pub enabled: bool,
     pub idn: Option<String>,
     pub resource: Option<String>,
     pub function: Option<MeterFunction>,
@@ -99,6 +102,10 @@ pub enum ClientMessage {
         ohms: f64,
     },
     SetPolling {
+        enabled: bool,
+    },
+    /// Open (true) or close (false) the instrument session.
+    SetConnected {
         enabled: bool,
     },
     #[serde(rename_all = "camelCase")]

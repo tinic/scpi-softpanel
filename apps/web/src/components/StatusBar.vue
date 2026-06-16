@@ -9,7 +9,8 @@ const model = computed(() => {
   const parts = store.state?.idn?.split(',') ?? []
   return parts.length >= 2 ? parts[1].trim() : null
 })
-const polling = computed(() => store.state?.polling ?? false)
+// Only "polling" when actually connected and reading; otherwise idle.
+const polling = computed(() => (store.state?.connected ?? false) && (store.state?.polling ?? false))
 const interval = computed(() => store.state?.intervalMs ?? 0)
 </script>
 

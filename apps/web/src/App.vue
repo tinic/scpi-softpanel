@@ -19,6 +19,18 @@ onMounted(() => store.connect())
       <h1>SCPI <span>SoftPanel</span></h1>
       <div class="topbar-right">
         <StatusBar />
+        <button
+          class="conn"
+          :class="store.state?.enabled ? 'danger' : 'primary'"
+          :title="
+            store.state?.enabled
+              ? 'Close the session, then press Run/Stop on the meter to return it to local control'
+              : 'Open a session to the meter'
+          "
+          @click="store.setConnected(!(store.state?.enabled ?? true))"
+        >
+          {{ store.state?.enabled ? 'Disconnect' : 'Connect' }}
+        </button>
         <SettingsPanel />
       </div>
     </header>
@@ -62,6 +74,11 @@ onMounted(() => store.connect())
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+.conn {
+  padding: 5px 14px;
+  font-size: 12px;
+  border-radius: 999px;
 }
 h1 {
   margin: 0;
