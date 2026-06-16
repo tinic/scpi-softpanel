@@ -1,6 +1,6 @@
 {
   "name": "scpi-softpanel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Control panel for SCPI bench instruments (Siglent SDM3045X): Vue 3 web UI served by a Rust core (headless server + Tauri desktop app).",
   "license": "MIT",
