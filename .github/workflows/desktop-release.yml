@@ -35,8 +35,10 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
+          # NOTE: only libayatana-appindicator3-dev — libappindicator3-dev conflicts
+          # with it (and Tauri 2 uses the ayatana one).
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libwebkit2gtk-4.1-dev librsvg2-dev patchelf \
             build-essential curl wget file libxdo-dev libssl-dev \
             libayatana-appindicator3-dev
 
