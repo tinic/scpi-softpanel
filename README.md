@@ -95,6 +95,54 @@ docker run --rm -p 8080:8080 -e METER_HOST=192.168.1.166 -v scpi-data:/data scpi
 Cross-platform desktop installers are produced by CI (`.github/workflows/desktop-release.yml`)
 on pushing a `v*` tag — Windows/macOS/Linux artifacts attach to a draft GitHub Release.
 
+## Unsigned builds & self-signing
+
+The released installers are **unsigned** — a warning-free install needs a paid Apple
+Developer ID ($99/yr) and Azure Artifact Signing (~$10/mo), which isn't worth it for a
+hobby tool. The apps still run; you just have to get past a one-time OS warning, or
+self-sign for your own machines. (Linux needs nothing.)
+
+**Linux** — nothing to do. The `.deb`/`.rpm`/`.AppImage` install and run as-is.
+
+**macOS** — the download is quarantined and Gatekeeper blocks it. Clear the quarantine
+flag once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/SCPI SoftPanel.app"
+```
+
+On Apple Silicon an app with *no* signature is refused as "damaged", so ad-hoc sign it
+(a local-only signature — valid on your Mac, not notarized, no Apple account needed):
+
+```bash
+codesign --force --deep --sign - "/Applications/SCPI SoftPanel.app"
+```
+
+Or just right-click the app → **Open** the first time and confirm the dialog.
+
+**Windows** — SmartScreen shows "Windows protected your PC"; click **More info → Run
+anyway**. To also drop the "Unknown publisher" prompt on your own machines, self-sign and
+trust the cert (elevated PowerShell):
+
+```powershell
+# 1. Create a self-signed code-signing certificate
+$cert = New-SelfSignedCertificate -Type CodeSigningCert `
+  -Subject "CN=SCPI SoftPanel (self-signed)" -CertStoreLocation Cert:\CurrentUser\My
+
+# 2. Sign the installer (adjust the signtool path / msi name)
+& "${env:ProgramFiles(x86)}\Windows Kits\10\bin\x64\signtool.exe" `
+  sign /fd SHA256 /sha1 $cert.Thumbprint "SCPI SoftPanel_x64_en-US.msi"
+
+# 3. Trust it on each machine that will run the app
+Export-Certificate -Cert $cert -FilePath scpi-softpanel.cer
+Import-Certificate -FilePath scpi-softpanel.cer -CertStoreLocation Cert:\LocalMachine\Root
+Import-Certificate -FilePath scpi-softpanel.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+```
+
+A self-signed signature only counts on machines that trust the cert, and it never earns
+SmartScreen reputation — only a CA-issued certificate does that. `desktop-release.yml`
+already has the slots to plug in real signing secrets later.
+
 ## Configuration
 
 The meter target is settable at runtime from the UI (the gear → Instrument), persisted
@@ -107,4 +155,15 @@ per-user. Defaults come from the environment (see `.env.example`): `METER_HOST`,
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm format   # web
 cd rust && cargo fmt --all --check && cargo clippy --all-targets && cargo test
+```
+
+## Refreshing the screenshot
+
+`docs/screenshot.png` is captured from the live app by `scripts/screenshot.mjs` (drives
+the cached Playwright Chromium headless — no system browser needed). With the server
+running and connected to a meter:
+
+```bash
+node scripts/screenshot.mjs            # → docs/screenshot.png (1280px @2x)
+node scripts/screenshot.mjs <url> <out>
 ```
