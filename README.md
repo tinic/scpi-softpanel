@@ -111,7 +111,7 @@ flag once:
 xattr -dr com.apple.quarantine "/Applications/SCPI SoftPanel.app"
 ```
 
-On Apple Silicon an app with *no* signature is refused as "damaged", so ad-hoc sign it
+On Apple Silicon an app with _no_ signature is refused as "damaged", so ad-hoc sign it
 (a local-only signature — valid on your Mac, not notarized, no Apple account needed):
 
 ```bash
