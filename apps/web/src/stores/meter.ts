@@ -110,6 +110,18 @@ export const useMeterStore = defineStore('meter', () => {
     consoleLog.value = []
   }
 
+  // -- meter target (settings), over REST since it changes the connection itself --
+  async function getConfig(): Promise<{ meterHost: string; meterPort: number }> {
+    return (await fetch('/api/config')).json()
+  }
+  async function saveConfig(meterHost: string, meterPort: number): Promise<void> {
+    await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ meterHost, meterPort }),
+    })
+  }
+
   return {
     linked,
     state,
@@ -129,5 +141,7 @@ export const useMeterStore = defineStore('meter', () => {
     refresh,
     raw,
     clearConsole,
+    getConfig,
+    saveConfig,
   }
 })

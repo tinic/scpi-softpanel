@@ -9,7 +9,13 @@ export default defineConfigWithVueTs(
   },
   {
     name: 'app/files-to-ignore',
-    ignores: ['**/dist/**', '**/node_modules/**', '**/bridge/.venv/**', '**/*.tsbuildinfo'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/bridge/.venv/**',
+      '**/*.tsbuildinfo',
+      'rust/**',
+    ],
   },
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

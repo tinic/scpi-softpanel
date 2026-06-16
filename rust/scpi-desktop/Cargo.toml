@@ -18,3 +18,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 rust-embed = "8"
 mime_guess = "2"
+dirs = "5"

@@ -34,8 +34,9 @@ fn main() {
             .build()
             .expect("tokio runtime");
         rt.block_on(async move {
-            let handle = spawn(meter_config());
-            let app = scpi_server::api_router(handle).fallback(serve_embedded);
+            let config_path = config_path();
+            let handle = spawn(meter_config(config_path.as_deref()));
+            let app = scpi_server::api_router(handle, config_path).fallback(serve_embedded);
             let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
                 .await
                 .expect("bind localhost");
@@ -66,10 +67,22 @@ fn main() {
         .expect("error while running tauri application");
 }
 
-/// Meter config from env, with the same defaults as the headless server.
-fn meter_config() -> MeterConfig {
-    let host = env("METER_HOST", "192.168.1.166");
-    let port: u16 = env("METER_PORT", "5025").parse().unwrap_or(5025);
+/// Path to the persisted settings file in the OS config dir, e.g.
+/// `~/.config/com.tinic.scpisoftpanel/config.json` on Linux.
+fn config_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("com.tinic.scpisoftpanel").join("config.json"))
+}
+
+/// Meter config: persisted target if present, else env, else defaults.
+fn meter_config(config_path: Option<&std::path::Path>) -> MeterConfig {
+    let (host, port) = match config_path.and_then(scpi_server::config::load) {
+        Some(p) => (p.meter_host, p.meter_port),
+        None => {
+            let host = env("METER_HOST", "192.168.1.166");
+            let port = env("METER_PORT", "5025").parse().unwrap_or(5025);
+            (host, port)
+        }
+    };
     MeterConfig {
         resource: format!("TCPIP::{host}::{port}::SOCKET"),
         host,

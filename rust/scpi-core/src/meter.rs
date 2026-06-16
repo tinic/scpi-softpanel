@@ -27,9 +27,17 @@ pub enum Command {
     SetContThreshold(f64),
     SetPolling(bool),
     SetInterval(u64),
+    /// Point the meter at a different instrument (host/port) and reconnect.
+    SetTarget {
+        host: String,
+        port: u16,
+    },
     MeasureOnce,
     Refresh,
-    Raw { cmd: String, expect_reply: bool },
+    Raw {
+        cmd: String,
+        expect_reply: bool,
+    },
 }
 
 pub struct MeterConfig {
@@ -80,6 +88,8 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         state_tx,
         events: events_tx.clone(),
         ring: ring.clone(),
+        next_reconnect: Instant::now(),
+        next_poll: Instant::now(),
     };
     tokio::spawn(meter.run(cmd_rx));
 
@@ -98,18 +108,19 @@ struct Meter {
     state_tx: watch::Sender<MeterState>,
     events: broadcast::Sender<ServerMessage>,
     ring: Arc<Mutex<RingStore>>,
+    // Reconnect/poll deadlines kept on the struct so command handlers (e.g. a
+    // retarget) can reschedule them.
+    next_reconnect: Instant,
+    next_poll: Instant,
 }
 
 impl Meter {
     async fn run(mut self, mut cmd_rx: mpsc::Receiver<Command>) {
-        let mut next_reconnect = Instant::now();
-        let mut next_poll = Instant::now();
-
         loop {
             let deadline = if self.session.is_none() {
-                next_reconnect
+                self.next_reconnect
             } else if self.state.polling {
-                next_poll
+                self.next_poll
             } else {
                 Instant::now() + Duration::from_secs(3600)
             };
@@ -122,11 +133,11 @@ impl Meter {
                 _ = sleep_until(deadline) => {
                     if self.session.is_none() {
                         self.try_connect().await;
-                        next_reconnect = Instant::now() + self.cfg.reconnect_delay;
-                        next_poll = Instant::now();
+                        self.next_reconnect = Instant::now() + self.cfg.reconnect_delay;
+                        self.next_poll = Instant::now();
                     } else if self.state.polling {
                         self.poll_once().await;
-                        next_poll = Instant::now()
+                        self.next_poll = Instant::now()
                             + Duration::from_millis(self.state.interval_ms.max(10));
                     }
                 }
@@ -194,6 +205,23 @@ impl Meter {
                 self.publish();
                 return;
             }
+            Command::SetTarget { host, port } => {
+                // Drop the current session and reconnect to the new instrument now.
+                self.session = None;
+                self.state.connected = false;
+                self.state.idn = None;
+                self.cfg.host = host;
+                self.cfg.port = port;
+                self.cfg.resource = format!("TCPIP::{}::{}::SOCKET", self.cfg.host, self.cfg.port);
+                self.state.resource = Some(self.cfg.resource.clone());
+                self.next_reconnect = Instant::now();
+                self.console(
+                    Direction::Info,
+                    &format!("retargeting to {}", self.cfg.resource),
+                );
+                self.publish();
+                return;
+            }
             _ => {}
         }
 
@@ -211,7 +239,8 @@ impl Meter {
             Command::MeasureOnce => self.measure_once().await,
             Command::Refresh => self.refresh_config_checked().await,
             Command::Raw { cmd, expect_reply } => self.raw(&cmd, expect_reply).await,
-            Command::SetPolling(_) | Command::SetInterval(_) => Ok(()),
+            // Handled in the early match above (they return before reaching here).
+            Command::SetPolling(_) | Command::SetInterval(_) | Command::SetTarget { .. } => Ok(()),
         };
         if let Err(e) = result {
             self.drop_session("command", &e);

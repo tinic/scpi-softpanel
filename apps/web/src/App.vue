@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useMeterStore } from '@/stores/meter'
 import StatusBar from '@/components/StatusBar.vue'
+import SettingsPanel from '@/components/SettingsPanel.vue'
 import LiveReading from '@/components/LiveReading.vue'
 import ControlPanel from '@/components/ControlPanel.vue'
 import TrendChart from '@/components/TrendChart.vue'
@@ -16,7 +17,10 @@ onMounted(() => store.connect())
   <div class="app">
     <header class="topbar">
       <h1>SCPI <span>SoftPanel</span></h1>
-      <StatusBar />
+      <div class="topbar-right">
+        <StatusBar />
+        <SettingsPanel />
+      </div>
     </header>
 
     <main class="grid">
@@ -51,6 +55,12 @@ onMounted(() => store.connect())
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 h1 {

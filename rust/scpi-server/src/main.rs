@@ -22,10 +22,20 @@ async fn main() {
     let cfg = Config::from_env();
     let bind = SocketAddr::new(cfg.host.parse().expect("invalid HOST"), cfg.port);
 
+    // A persisted target (if CONFIG_PATH is set and the file exists) overrides env.
+    let (meter_host, meter_port) = match cfg
+        .config_path
+        .as_deref()
+        .and_then(scpi_server::config::load)
+    {
+        Some(p) => (p.meter_host, p.meter_port),
+        None => (cfg.meter_host.clone(), cfg.meter_port),
+    };
+
     let handle = spawn(MeterConfig {
-        host: cfg.meter_host.clone(),
-        port: cfg.meter_port,
-        resource: format!("TCPIP::{}::{}::SOCKET", cfg.meter_host, cfg.meter_port),
+        resource: format!("TCPIP::{meter_host}::{meter_port}::SOCKET"),
+        host: meter_host,
+        port: meter_port,
         timeout: Duration::from_millis(cfg.meter_timeout_ms),
         poll_interval_ms: cfg.poll_interval_ms,
         poll_autostart: cfg.poll_autostart,
@@ -33,7 +43,7 @@ async fn main() {
         ring_capacity: cfg.ring_capacity,
     });
 
-    let mut app = api_router(handle);
+    let mut app = api_router(handle, cfg.config_path.clone());
     if cfg.web_dist.is_dir() {
         let index = cfg.web_dist.join("index.html");
         app = app.fallback_service(
@@ -74,10 +84,16 @@ struct Config {
     poll_autostart: bool,
     ring_capacity: usize,
     web_dist: PathBuf,
+    /// Optional persisted-settings file (env `CONFIG_PATH`).
+    config_path: Option<PathBuf>,
 }
 
 impl Config {
     fn from_env() -> Self {
+        let config_path = std::env::var("CONFIG_PATH")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from);
         Config {
             host: env("HOST", "0.0.0.0"),
             port: env("PORT", "8080").parse().unwrap_or(8080),
@@ -91,6 +107,7 @@ impl Config {
             ),
             ring_capacity: env("RING_CAPACITY", "3600").parse().unwrap_or(3600),
             web_dist: PathBuf::from(env("WEB_DIST", "../apps/web/dist")),
+            config_path,
         }
     }
 }

@@ -2,9 +2,13 @@
 //! binary and the Tauri desktop app build on [`api_router`], adding their own static
 //! file serving (disk vs. embedded) as a fallback.
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::response::IntoResponse;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use scpi_core::messages::ClientMessage;
@@ -12,27 +16,38 @@ use scpi_core::meter::Command;
 use scpi_core::{MeterHandle, ServerMessage};
 use serde_json::json;
 
+pub mod config;
+use config::PersistedConfig;
+
 #[derive(Clone)]
 pub struct AppState {
     pub handle: MeterHandle,
+    /// Where to persist the meter target, when settings are saved (None = no persistence).
+    pub config_path: Option<Arc<PathBuf>>,
 }
 
-/// Router exposing `/api/health`, `/api/state`, `/api/readings`, and `/ws`. The caller
-/// supplies static-asset serving via `.fallback_service(...)`.
-pub fn api_router(handle: MeterHandle) -> Router {
+/// Router exposing `/api/health`, `/api/state`, `/api/readings`, `/api/config`, and
+/// `/ws`. The caller supplies static-asset serving via `.fallback_service(...)`.
+pub fn api_router(handle: MeterHandle, config_path: Option<PathBuf>) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/state", get(api_state))
         .route("/api/readings", get(api_readings))
+        .route("/api/config", get(get_config).put(put_config))
         .route("/ws", get(ws_upgrade))
-        .with_state(AppState { handle })
+        .with_state(AppState {
+            handle,
+            config_path: config_path.map(Arc::new),
+        })
 }
 
 // -- REST -------------------------------------------------------------------
 
 async fn health(State(app): State<AppState>) -> impl IntoResponse {
     let connected = app.handle.state_rx.borrow().connected;
-    Json(json!({ "ok": true, "connected": connected }))
+    // Each live WS session holds a broadcast receiver, so this is the client count.
+    let clients = app.handle.events.receiver_count();
+    Json(json!({ "ok": true, "connected": connected, "clients": clients }))
 }
 
 async fn api_state(State(app): State<AppState>) -> impl IntoResponse {
@@ -49,6 +64,55 @@ async fn api_readings(
     Query(q): Query<ReadingsQuery>,
 ) -> impl IntoResponse {
     Json(app.handle.ring.lock().await.recent(q.n))
+}
+
+// -- meter target (settings) ------------------------------------------------
+
+async fn get_config(State(app): State<AppState>) -> impl IntoResponse {
+    let resource = app
+        .handle
+        .state_rx
+        .borrow()
+        .resource
+        .clone()
+        .unwrap_or_default();
+    let (meter_host, meter_port) = parse_target(&resource);
+    Json(PersistedConfig {
+        meter_host,
+        meter_port,
+    })
+}
+
+async fn put_config(State(app): State<AppState>, Json(cfg): Json<PersistedConfig>) -> Response {
+    if cfg.meter_host.trim().is_empty() || cfg.meter_port == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            "meterHost and a non-zero meterPort are required",
+        )
+            .into_response();
+    }
+    let _ = app
+        .handle
+        .cmd
+        .send(Command::SetTarget {
+            host: cfg.meter_host.clone(),
+            port: cfg.meter_port,
+        })
+        .await;
+    if let Some(path) = &app.config_path {
+        if let Err(e) = config::save(path, &cfg) {
+            tracing::warn!("failed to persist meter target: {e}");
+        }
+    }
+    Json(cfg).into_response()
+}
+
+/// Pull host/port out of a `TCPIP::host::port::SOCKET` (or `::host::INSTR`) resource.
+fn parse_target(resource: &str) -> (String, u16) {
+    let parts: Vec<&str> = resource.split("::").collect();
+    let host = parts.get(1).map(|s| s.to_string()).unwrap_or_default();
+    let port = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(5025);
+    (host, port)
 }
 
 // -- WebSocket --------------------------------------------------------------
