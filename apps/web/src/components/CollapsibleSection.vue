@@ -21,11 +21,11 @@ const open = ref(props.defaultOpen)
 .head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   background: none;
   border: none;
-  padding: 0;
+  padding: 4px 0;
   cursor: pointer;
   color: inherit;
   text-align: left;
@@ -39,7 +39,7 @@ const open = ref(props.defaultOpen)
 }
 .chev {
   display: inline-block;
-  font-size: 11px;
+  font-size: 15px;
   color: var(--muted);
   transition: transform 0.15s ease;
 }

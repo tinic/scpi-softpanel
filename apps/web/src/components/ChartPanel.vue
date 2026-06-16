@@ -87,14 +87,20 @@ function select(t: Tab): void {
 .chev-btn {
   background: none;
   border: none;
-  padding: 0;
+  padding: 6px 9px;
+  margin: -4px -5px; /* keep alignment despite the larger hit area */
   cursor: pointer;
   color: inherit;
   display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.chev-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 .chev {
   display: inline-block;
-  font-size: 11px;
+  font-size: 15px;
   color: var(--muted);
   transition: transform 0.15s ease;
 }
