@@ -12,7 +12,7 @@ pub const BLOCK_TARGET_BYTES: usize = 1 << 20; // 1 MiB
 /// Cap across all retained blocks.
 pub const TOTAL_CAP_BYTES: usize = 256 << 20; // 256 MiB
 
-pub const CSV_HEADER: &str = "seq,serial,datetime,value,unit\n";
+pub const CSV_HEADER: &str = "seq,serial,datetime,function,value,unit\n";
 
 pub struct CsvLog {
     /// Sealed blocks, oldest first; each is >= `block_target` bytes.

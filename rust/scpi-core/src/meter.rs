@@ -246,9 +246,11 @@ impl Meter {
         let _ = self.events.send(ServerMessage::Reading { reading });
     }
 
-    /// One CSV row: `seq,serial,iso8601,value,unit`. `seq` is a monotonic per-reading
-    /// counter; overload renders as `OL`. Base unit/value are used (no SI prefixes or
-    /// VDC/°F display transforms) so the export is analysis-friendly.
+    /// One CSV row: `seq,serial,iso8601,function,value,unit`. `seq` is a monotonic
+    /// per-reading counter; `function` (VOLT:DC, VOLT:AC, RES, …) disambiguates AC/DC
+    /// and the measurement type since `unit` is only the base unit (V/A/Ω/…). Overload
+    /// renders as `OL`. Base unit/value are used (no SI prefixes or VDC/°F display
+    /// transforms) so the export is analysis-friendly.
     fn csv_row(&self, seq: u64, r: &Reading) -> String {
         let serial = self.serial.as_deref().unwrap_or("");
         let value = if r.value.is_finite() {
@@ -257,8 +259,9 @@ impl Meter {
             "OL".to_string()
         };
         format!(
-            "{seq},{serial},{iso},{value},{unit}\n",
+            "{seq},{serial},{iso},{func},{value},{unit}\n",
             iso = iso8601_ms(r.ts),
+            func = r.function,
             unit = r.unit,
         )
     }
