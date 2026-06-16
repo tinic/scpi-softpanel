@@ -78,3 +78,30 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Attach version-less copies of the Windows/macOS installers so the
+  # /releases/latest/download/<name> links in the README never break when the
+  # version (baked into Tauri's filenames) changes.
+  stable-links:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Attach always-latest stable-named installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release download "$TAG" -R "$REPO" -p '*.msi' -p '*-setup.exe' -p '*.dmg' -D dl
+          cd dl
+          shopt -s nullglob
+          for f in *_x64_en-US.msi; do cp "$f" SCPI-SoftPanel-windows-x64.msi; done
+          for f in *-setup.exe;     do cp "$f" SCPI-SoftPanel-windows-x64-setup.exe; done
+          for f in *aarch64.dmg;    do cp "$f" SCPI-SoftPanel-macos-apple-silicon.dmg; done
+          for f in *_x64.dmg;       do cp "$f" SCPI-SoftPanel-macos-intel.dmg; done
+          gh release upload "$TAG" -R "$REPO" --clobber \
+            SCPI-SoftPanel-windows-x64.msi SCPI-SoftPanel-windows-x64-setup.exe \
+            SCPI-SoftPanel-macos-apple-silicon.dmg SCPI-SoftPanel-macos-intel.dmg

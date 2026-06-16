@@ -15,6 +15,19 @@ It ships two ways from one codebase:
 Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
 controls, a trend chart, a raw-SCPI console, and a continuity tone.
 
+## Download
+
+Desktop app — these links always point at the latest release:
+
+- **Windows** — [**SCPI-SoftPanel-windows-x64.msi**](https://github.com/tinic/scpi-softpanel/releases/latest/download/SCPI-SoftPanel-windows-x64.msi)
+  (or the [`.exe` setup](https://github.com/tinic/scpi-softpanel/releases/latest/download/SCPI-SoftPanel-windows-x64-setup.exe))
+- **macOS (Apple Silicon)** — [**SCPI-SoftPanel-macos-apple-silicon.dmg**](https://github.com/tinic/scpi-softpanel/releases/latest/download/SCPI-SoftPanel-macos-apple-silicon.dmg)
+- **macOS (Intel)** — [**SCPI-SoftPanel-macos-intel.dmg**](https://github.com/tinic/scpi-softpanel/releases/latest/download/SCPI-SoftPanel-macos-intel.dmg)
+- **Linux** — `.deb` / `.rpm` / `.AppImage` on the [latest release](https://github.com/tinic/scpi-softpanel/releases/latest), or run the [Docker image](#quick-start-docker)
+
+Builds are **unsigned**, so the first launch shows an OS warning — see
+[unsigned builds & self-signing](#unsigned-builds--self-signing) for the one-time steps.
+
 ## Quick start (Docker)
 
 Run the headless server from the prebuilt image — no clone, no build. Save this as
