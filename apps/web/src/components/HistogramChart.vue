@@ -4,10 +4,12 @@ import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import { useMeterStore } from '@/stores/meter'
 import { useChartWindow } from '@/composables/useChartWindow'
-import { formatValue } from '@/lib/format'
+import { useTempUnit } from '@/composables/useTempUnit'
+import { convertTemp, formatValue, tempUnitLabel } from '@/lib/format'
 
 const store = useMeterStore()
 const { windowed } = useChartWindow()
+const { tempUnit } = useTempUnit()
 const el = ref<HTMLDivElement | null>(null)
 
 let plot: uPlot | null = null
@@ -22,8 +24,9 @@ interface Bins {
   unit: string
   mean: number
   std: number
+  isTemp: boolean
 }
-const empty = (unit = ''): Bins => ({
+const empty = (unit = '', isTemp = false): Bins => ({
   centers: [],
   counts: [],
   lo: 0,
@@ -32,6 +35,7 @@ const empty = (unit = ''): Bins => ({
   unit,
   mean: NaN,
   std: NaN,
+  isTemp,
 })
 let bins: Bins = empty()
 
@@ -39,12 +43,13 @@ let bins: Bins = empty()
 // would be meaningless, so — like the stats strip — only the active function counts).
 function computeBins(): Bins {
   const fn = store.lastReading?.function
-  const unit = store.lastReading?.unit ?? ''
+  const isTemp = fn === 'TEMP'
+  const unit = isTemp ? tempUnitLabel(tempUnit.value) : (store.lastReading?.unit ?? '')
   const vals = windowed.value
     .filter((r) => r.function === fn && Number.isFinite(r.value))
-    .map((r) => r.value)
+    .map((r) => (isTemp ? convertTemp(r.value, tempUnit.value) : r.value))
   const total = vals.length
-  if (total === 0) return empty(unit)
+  if (total === 0) return empty(unit, isTemp)
 
   let min = Math.min(...vals)
   let max = Math.max(...vals)
@@ -65,7 +70,7 @@ function computeBins(): Bins {
     counts[idx]++
   }
   const centers = counts.map((_, i) => min + (i + 0.5) * binWidth)
-  return { centers, counts, lo: min, binWidth, total, unit, mean, std }
+  return { centers, counts, lo: min, binWidth, total, unit, mean, std, isTemp }
 }
 
 function buildData(): uPlot.AlignedData {
@@ -75,6 +80,8 @@ function buildData(): uPlot.AlignedData {
 
 // Compact engineering value for axis ticks / tooltip, e.g. "2.85 mV".
 function fmtVal(v: number, digits = 3): string {
+  // Temperature is shown at fixed resolution with no SI prefix (no "m°C").
+  if (bins.isTemp) return `${v.toFixed(1)} ${bins.unit}`
   const f = formatValue(v, bins.unit, digits)
   return `${f.sign}${f.text} ${f.unit}`.trim()
 }
@@ -206,7 +213,7 @@ onMounted(() => {
   ro.observe(el.value)
 })
 
-watch(windowed, () => plot?.setData(buildData()))
+watch([windowed, tempUnit], () => plot?.setData(buildData()))
 
 onBeforeUnmount(() => {
   ro?.disconnect()

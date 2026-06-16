@@ -3,9 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatReading } from '@/lib/format'
+import { useTempUnit } from '@/composables/useTempUnit'
 import { blipTone, onToneBlocked, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
+const { tempUnit } = useTempUnit()
 
 // -- continuity tone -------------------------------------------------------
 // Follows the meter's own threshold (CONT:THR:VAL, in state); 50 Ω is its default.
@@ -78,7 +80,7 @@ const isCont = computed(() => store.lastReading?.function === 'CONT')
 const display = computed(() => {
   const r = store.lastReading
   if (!r) return { sign: '', text: '––––', unit: '' }
-  return formatReading(r)
+  return formatReading(r, tempUnit.value)
 })
 
 const overload = computed(() => store.lastReading?.overload ?? false)
@@ -104,7 +106,7 @@ const stats = computed(() => {
   const max = Math.max(...vals)
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length
   const unit = store.lastReading?.unit ?? ''
-  const fmt = (v: number) => formatReading({ value: v, unit, function: fn })
+  const fmt = (v: number) => formatReading({ value: v, unit, function: fn }, tempUnit.value)
   return {
     min: fmt(min),
     max: fmt(max),

@@ -3,8 +3,16 @@ import { computed } from 'vue'
 import { FUNCTION_INFO, METER_FUNCTIONS, NPLC_CHOICES } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatRangeLabel } from '@/lib/format'
+import { useTempUnit } from '@/composables/useTempUnit'
+import type { TempUnit } from '@/lib/format'
 
 const store = useMeterStore()
+const { tempUnit, setTempUnit } = useTempUnit()
+const TEMP_UNITS: { id: TempUnit; label: string }[] = [
+  { id: 'C', label: '°C' },
+  { id: 'F', label: '°F' },
+  { id: 'K', label: 'K' },
+]
 
 const functions = METER_FUNCTIONS
 const currentInfo = computed(() =>
@@ -74,6 +82,20 @@ const activeRange = computed(() => {
           @click="store.setContThreshold(t)"
         >
           {{ formatRangeLabel(t, 'Ω') }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="store.state?.function === 'TEMP'" class="row">
+      <label>Unit</label>
+      <div class="seg">
+        <button
+          v-for="u in TEMP_UNITS"
+          :key="u.id"
+          :class="{ primary: tempUnit === u.id }"
+          @click="setTempUnit(u.id)"
+        >
+          {{ u.label }}
         </button>
       </div>
     </div>

@@ -4,9 +4,11 @@ import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import type { Reading } from '@scpi/shared'
 import { useChartWindow } from '@/composables/useChartWindow'
-import { formatReading } from '@/lib/format'
+import { useTempUnit } from '@/composables/useTempUnit'
+import { convertTemp, formatReading } from '@/lib/format'
 
 const { windowed } = useChartWindow()
+const { tempUnit } = useTempUnit()
 const el = ref<HTMLDivElement | null>(null)
 const WINDOW = 600
 
@@ -24,12 +26,17 @@ function buildData(): uPlot.AlignedData {
   const ys = new Array<number | null>(r.length)
   for (let i = 0; i < r.length; i++) {
     xs[i] = r[i].ts / 1000
-    ys[i] = Number.isFinite(r[i].value) ? r[i].value : null
+    const v = r[i].value
+    ys[i] = Number.isFinite(v)
+      ? r[i].function === 'TEMP'
+        ? convertTemp(v, tempUnit.value)
+        : v
+      : null
   }
   return [xs, ys]
 }
 
-const fmt = (r: Reading) => formatReading(r)
+const fmt = (r: Reading) => formatReading(r, tempUnit.value)
 
 // uPlot's default tick labels round to a few significant digits, which collapses
 // every label to the same string when the visible spread is tiny relative to the
@@ -129,7 +136,7 @@ onMounted(() => {
   ro.observe(el.value)
 })
 
-watch(windowed, () => plot?.setData(buildData()))
+watch([windowed, tempUnit], () => plot?.setData(buildData()))
 
 onBeforeUnmount(() => {
   ro?.disconnect()
