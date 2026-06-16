@@ -47,6 +47,28 @@ function select(t: Tab): void {
           Histogram
         </button>
       </div>
+      <a
+        class="dl"
+        href="/api/readings.csv"
+        download="scpi-readings.csv"
+        title="Download readings as CSV"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="15"
+          height="15"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3v11" />
+          <path d="M8 11l4 4 4-4" />
+          <path d="M5 20h14" />
+        </svg>
+      </a>
       <button class="clear" title="Clear data" @click="clear">↺</button>
     </div>
     <div v-show="open" class="body">
@@ -104,8 +126,22 @@ function select(t: Tab): void {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
-.clear {
+.dl {
   margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0.75;
+}
+.dl:hover {
+  color: var(--text);
+  opacity: 1;
+}
+.clear {
   width: 24px;
   height: 24px;
   padding: 0;

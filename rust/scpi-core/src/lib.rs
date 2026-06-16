@@ -2,6 +2,7 @@
 //! reading history, and the wire contract shared with the web frontend. Shared by
 //! the headless server binary and (later) the Tauri desktop app.
 
+pub mod csv_log;
 pub mod functions;
 pub mod messages;
 pub mod meter;

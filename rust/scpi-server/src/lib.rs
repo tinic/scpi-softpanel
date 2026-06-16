@@ -33,6 +33,7 @@ pub fn api_router(handle: MeterHandle, config_path: Option<PathBuf>) -> Router {
         .route("/api/health", get(health))
         .route("/api/state", get(api_state))
         .route("/api/readings", get(api_readings))
+        .route("/api/readings.csv", get(api_readings_csv))
         .route("/api/config", get(get_config).put(put_config))
         .route("/ws", get(ws_upgrade))
         .with_state(AppState {
@@ -64,6 +65,21 @@ async fn api_readings(
     Query(q): Query<ReadingsQuery>,
 ) -> impl IntoResponse {
     Json(app.handle.ring.lock().await.recent(q.n))
+}
+
+/// The full retained reading history as a CSV download (serial, datetime, value, unit).
+async fn api_readings_csv(State(app): State<AppState>) -> impl IntoResponse {
+    let body = app.handle.csv.lock().await.to_csv();
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"scpi-readings.csv\"",
+            ),
+        ],
+        body,
+    )
 }
 
 // -- meter target (settings) ------------------------------------------------

@@ -13,6 +13,7 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, watch, Mutex};
 use tokio::time::{sleep_until, Instant};
 
+use crate::csv_log::{iso8601_ms, CsvLog, BLOCK_TARGET_BYTES, TOTAL_CAP_BYTES};
 use crate::functions::{parse_function_response, parse_reading_value, MeterFunction};
 use crate::messages::{ConsoleEntry, Direction, MeterState, Reading, ServerMessage};
 use crate::ring::RingStore;
@@ -77,12 +78,15 @@ pub struct MeterHandle {
     pub state_rx: watch::Receiver<MeterState>,
     pub events: broadcast::Sender<ServerMessage>,
     pub ring: Arc<Mutex<RingStore>>,
+    /// Rolling CSV export buffer (capped block deque) backing the `.csv` download.
+    pub csv: Arc<Mutex<CsvLog>>,
 }
 
 pub fn spawn(cfg: MeterConfig) -> MeterHandle {
     let (cmd_tx, cmd_rx) = mpsc::channel(64);
     let (events_tx, _events_rx) = broadcast::channel(512);
     let ring = Arc::new(Mutex::new(RingStore::new(cfg.ring_capacity)));
+    let csv = Arc::new(Mutex::new(CsvLog::new(BLOCK_TARGET_BYTES, TOTAL_CAP_BYTES)));
 
     let state = MeterState {
         connected: false,
@@ -111,6 +115,8 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         state_tx,
         events: events_tx.clone(),
         ring: ring.clone(),
+        csv: csv.clone(),
+        serial: None,
         next_reconnect: Instant::now(),
         next_poll: Instant::now(),
     };
@@ -121,6 +127,7 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         state_rx,
         events: events_tx,
         ring,
+        csv,
     }
 }
 
@@ -131,6 +138,9 @@ struct Meter {
     state_tx: watch::Sender<MeterState>,
     events: broadcast::Sender<ServerMessage>,
     ring: Arc<Mutex<RingStore>>,
+    csv: Arc<Mutex<CsvLog>>,
+    /// Instrument serial (parsed from IDN), stamped on every CSV row.
+    serial: Option<String>,
     // Reconnect/poll deadlines kept on the struct so command handlers (e.g. a
     // retarget) can reschedule them.
     next_reconnect: Instant,
@@ -193,6 +203,7 @@ impl Meter {
                 let _ = self.session.as_mut().unwrap().write("*CLS").await;
                 self.state.connected = true;
                 self.state.idn = Some(idn.clone());
+                self.serial = parse_serial(&idn);
                 self.state.last_error = None;
                 self.publish();
                 self.console(Direction::Info, &format!("connected: {idn}"));
@@ -217,12 +228,34 @@ impl Meter {
 
     async fn poll_once(&mut self) {
         match self.measure().await {
-            Ok(reading) => {
-                self.ring.lock().await.push(reading.clone());
-                let _ = self.events.send(ServerMessage::Reading { reading });
-            }
+            Ok(reading) => self.record(reading).await,
             Err(e) => self.drop_session("poll", &e),
         }
+    }
+
+    /// Fan a new reading out to the CSV log, the snapshot ring, and live WS clients.
+    async fn record(&mut self, reading: Reading) {
+        let row = self.csv_row(&reading);
+        self.csv.lock().await.push_row(&row);
+        self.ring.lock().await.push(reading.clone());
+        let _ = self.events.send(ServerMessage::Reading { reading });
+    }
+
+    /// One CSV row: `serial,iso8601,value,unit`. Overload renders as `OL`. The base
+    /// unit/value are used (no SI prefixes or VDC/°F display transforms) so the export
+    /// is analysis-friendly.
+    fn csv_row(&self, r: &Reading) -> String {
+        let serial = self.serial.as_deref().unwrap_or("");
+        let value = if r.value.is_finite() {
+            format!("{}", r.value)
+        } else {
+            "OL".to_string()
+        };
+        format!(
+            "{serial},{iso},{value},{unit}\n",
+            iso = iso8601_ms(r.ts),
+            unit = r.unit,
+        )
     }
 
     // -- command dispatch ----------------------------------------------------
@@ -456,8 +489,7 @@ impl Meter {
 
     async fn measure_once(&mut self) -> std::io::Result<()> {
         let reading = self.measure().await?;
-        self.ring.lock().await.push(reading.clone());
-        let _ = self.events.send(ServerMessage::Reading { reading });
+        self.record(reading).await;
         Ok(())
     }
 
@@ -630,6 +662,14 @@ impl Meter {
             },
         });
     }
+}
+
+/// Pull the serial number out of an IDN reply ("maker,model,serial,firmware").
+fn parse_serial(idn: &str) -> Option<String> {
+    idn.split(',')
+        .nth(2)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn now_ms() -> i64 {
