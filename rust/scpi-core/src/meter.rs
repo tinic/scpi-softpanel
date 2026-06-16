@@ -117,6 +117,7 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         ring: ring.clone(),
         csv: csv.clone(),
         serial: None,
+        next_seq: 1,
         next_reconnect: Instant::now(),
         next_poll: Instant::now(),
     };
@@ -141,6 +142,8 @@ struct Meter {
     csv: Arc<Mutex<CsvLog>>,
     /// Instrument serial (parsed from IDN), stamped on every CSV row.
     serial: Option<String>,
+    /// Monotonic per-reading sequence number (the CSV `seq` column).
+    next_seq: u64,
     // Reconnect/poll deadlines kept on the struct so command handlers (e.g. a
     // retarget) can reschedule them.
     next_reconnect: Instant,
@@ -235,16 +238,18 @@ impl Meter {
 
     /// Fan a new reading out to the CSV log, the snapshot ring, and live WS clients.
     async fn record(&mut self, reading: Reading) {
-        let row = self.csv_row(&reading);
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        let row = self.csv_row(seq, &reading);
         self.csv.lock().await.push_row(&row);
         self.ring.lock().await.push(reading.clone());
         let _ = self.events.send(ServerMessage::Reading { reading });
     }
 
-    /// One CSV row: `serial,iso8601,value,unit`. Overload renders as `OL`. The base
-    /// unit/value are used (no SI prefixes or VDC/°F display transforms) so the export
-    /// is analysis-friendly.
-    fn csv_row(&self, r: &Reading) -> String {
+    /// One CSV row: `seq,serial,iso8601,value,unit`. `seq` is a monotonic per-reading
+    /// counter; overload renders as `OL`. Base unit/value are used (no SI prefixes or
+    /// VDC/°F display transforms) so the export is analysis-friendly.
+    fn csv_row(&self, seq: u64, r: &Reading) -> String {
         let serial = self.serial.as_deref().unwrap_or("");
         let value = if r.value.is_finite() {
             format!("{}", r.value)
@@ -252,7 +257,7 @@ impl Meter {
             "OL".to_string()
         };
         format!(
-            "{serial},{iso},{value},{unit}\n",
+            "{seq},{serial},{iso},{value},{unit}\n",
             iso = iso8601_ms(r.ts),
             unit = r.unit,
         )
