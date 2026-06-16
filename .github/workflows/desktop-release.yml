@@ -36,11 +36,12 @@ jobs:
         run: |
           sudo apt-get update
           # NOTE: only libayatana-appindicator3-dev — libappindicator3-dev conflicts
-          # with it (and Tauri 2 uses the ayatana one).
+          # with it (and Tauri 2 uses the ayatana one). rpm + libfuse2 are for the
+          # .rpm bundle and AppImage packing respectively.
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev librsvg2-dev patchelf \
             build-essential curl wget file libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev
+            libayatana-appindicator3-dev rpm libfuse2
 
       - uses: pnpm/action-setup@v4
         with:
