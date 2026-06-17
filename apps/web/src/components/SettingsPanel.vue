@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMeterStore } from '@/stores/meter'
+import { useDisplayFont, type DisplayFont } from '@/composables/useDisplayFont'
 
 const store = useMeterStore()
 const open = ref(false)
 const host = ref('')
 const port = ref(5025)
 const saving = ref(false)
+
+const { displayFont, setDisplayFont, fonts } = useDisplayFont()
+const fontKeys = Object.keys(fonts) as DisplayFont[]
+const previewStyle = computed(() => ({
+  fontFamily: fonts[displayFont.value].stack,
+  fontWeight: String(fonts[displayFont.value].weight),
+}))
 
 async function show() {
   const cfg = await store.getConfig()
@@ -65,6 +73,20 @@ watch(open, (isOpen) => {
         Port
         <input v-model.number="port" type="number" min="1" max="65535" />
       </label>
+
+      <span class="seclabel">Display font</span>
+      <div class="fontsel">
+        <button
+          v-for="f in fontKeys"
+          :key="f"
+          :class="{ primary: displayFont === f }"
+          @click="setDisplayFont(f)"
+        >
+          {{ fonts[f].label }}
+        </button>
+      </div>
+      <div class="preview" :style="previewStyle">-12.345&nbsp;mV</div>
+
       <div class="actions">
         <button @click="open = false">Cancel</button>
         <button class="primary" :disabled="saving || !host.trim()" @click="save">
@@ -124,10 +146,40 @@ watch(open, (isOpen) => {
 .dialog input {
   width: 100%;
 }
+.seclabel {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.fontsel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fontsel button {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+.preview {
+  margin-top: 12px;
+  padding: 10px;
+  text-align: center;
+  font-size: 30px;
+  line-height: 1.1;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 18px;
 }
 </style>

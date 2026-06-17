@@ -1,10 +1,34 @@
-/* Iosevka (OFL) — reserved for measurement display values. */
+/* Display-value fonts (all OFL), selectable from preferences. Iosevka is the
+   default; DSEG7/DSEG14 are 7-/14-segment LCD faces; Oxanium is a techno display
+   face. Each is embedded (offline). The weight range on the segment/Oxanium faces
+   spans 100–900 so requesting any weight matches without faux-bolding. */
 @font-face {
   font-family: 'Iosevka';
   font-style: normal;
   font-weight: 800;
   font-display: swap;
   src: url('./assets/fonts/iosevka-extrabold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DSEG7';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/dseg7-classic-bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DSEG14';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/dseg14-classic-bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Oxanium';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/oxanium-700.woff2') format('woff2');
 }
 
 /* Noto Sans (OFL) — base UI font. */

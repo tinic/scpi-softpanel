@@ -4,10 +4,18 @@ import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
 import { formatReading } from '@/lib/format'
 import { useTempUnit } from '@/composables/useTempUnit'
+import { useDisplayFont } from '@/composables/useDisplayFont'
 import { blipTone, onToneBlocked, setToneVolume, startTone, stopTone } from '@/lib/tone'
 
 const store = useMeterStore()
 const { tempUnit } = useTempUnit()
+
+// Display font is a preference; expose it as CSS vars on the readout root.
+const { displayFont, fonts } = useDisplayFont()
+const fontVars = computed(() => ({
+  '--display-font': fonts[displayFont.value].stack,
+  '--display-weight': String(fonts[displayFont.value].weight),
+}))
 
 // -- continuity tone -------------------------------------------------------
 // Follows the meter's own threshold (CONT:THR:VAL, in state); 50 Ω is its default.
@@ -116,7 +124,7 @@ const stats = computed(() => {
 </script>
 
 <template>
-  <div class="live">
+  <div class="live" :style="fontVars">
     <div class="fn">
       {{ functionLabel }}
       <template v-if="store.state?.function === 'CONT'">
@@ -254,11 +262,12 @@ const stats = computed(() => {
 .mag {
   display: inline-flex;
   align-items: baseline;
-  font-family: 'Iosevka', ui-monospace, monospace;
-  font-weight: 800;
+  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
+  font-weight: var(--display-weight, 800);
   font-size: 96px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 /* Fixed-width sign column so digits don't shift when the reading crosses zero. */
 .sign {
@@ -267,8 +276,8 @@ const stats = computed(() => {
   text-align: center;
 }
 .unit {
-  font-family: 'Iosevka', ui-monospace, monospace;
-  font-weight: 800;
+  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
+  font-weight: var(--display-weight, 800);
   font-size: 38px;
   color: var(--accent);
 }
@@ -299,11 +308,12 @@ const stats = computed(() => {
   letter-spacing: 0.06em;
 }
 .sv {
-  font-family: 'Iosevka', ui-monospace, monospace;
-  font-weight: 800;
+  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
+  font-weight: var(--display-weight, 800);
   font-size: 15px;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 .clear-stats {
   width: 22px;
