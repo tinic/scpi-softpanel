@@ -14,6 +14,10 @@ RUN pnpm --filter @scpi/web build
 # ---- rust build: the headless server binary ----
 FROM rust:1-slim AS rust
 WORKDIR /build
+# Retry crate downloads and avoid HTTP/2 multiplexing — QEMU-emulated arm64 builds
+# otherwise hit flaky "HTTP2 framing layer / connection reset" errors mid-download
+# that can fail an entire multi-arch release build.
+ENV CARGO_NET_RETRY=10 CARGO_HTTP_MULTIPLEXING=false
 COPY rust/ ./
 RUN cargo build --release -p scpi-server
 
