@@ -56,22 +56,16 @@ function decade125(x: number): number {
   return 10 ** (e + 1)
 }
 
-function pickFullScale(now: number): number {
+const WINDOW_MS = 15000 // sliding window shared by autoscale and the min/max band
+
+function pickFullScale(maxAbs: number): number {
   const st = store.state
   // Manual range: the scale IS the instrument's range, like the front panel.
   if (st?.autoRange === false && st.range && st.range !== 'AUTO') {
     const r = Number(st.range)
     if (Number.isFinite(r) && r > 0) return r
   }
-  // Autorange: 1-2-5 decade over the last 15 s of readings.
-  const fn = st?.function
-  let maxAbs = 0
-  for (const r of windowed.value) {
-    if (r.function !== fn || !Number.isFinite(r.value) || now - r.ts > 15000) continue
-    const v = fn === 'TEMP' ? convertTemp(r.value, tempUnit.value) : r.value
-    const a = Math.abs(v)
-    if (a > maxAbs) maxAbs = a
-  }
+  // Autorange: 1-2-5 decade over the recent window.
   if (maxAbs === 0) return fs
   const want = decade125(maxAbs)
   if (!fsSettled) {
@@ -84,6 +78,7 @@ function pickFullScale(now: number): number {
   }
   if (want < fs) {
     // Shrink only after the smaller scale has been sufficient for a while.
+    const now = Date.now()
     if (!shrinkCandidateSince) shrinkCandidateSince = now
     if (now - shrinkCandidateSince > 3000) {
       shrinkCandidateSince = 0
@@ -283,7 +278,17 @@ function frame(t: number): void {
   const st = store.state
   const fn = st?.function
   const centerZero = SIGNED.has(fn ?? '')
-  fs = pickFullScale(now)
+
+  // Min/max over the sliding window — drives both the autoscale and the band.
+  let wMin = Infinity
+  let wMax = -Infinity
+  for (const rd of windowed.value) {
+    if (rd.function !== fn || !Number.isFinite(rd.value) || now - rd.ts > WINDOW_MS) continue
+    const v = fn === 'TEMP' ? convertTemp(rd.value, tempUnit.value) : rd.value
+    if (v < wMin) wMin = v
+    if (v > wMax) wMax = v
+  }
+  fs = pickFullScale(wMin > wMax ? 0 : Math.max(Math.abs(wMin), Math.abs(wMax)))
   const { legend, prefExp } = unitInfo()
 
   // Rebuild the cached face only when something it depends on changes.
@@ -332,10 +337,43 @@ function frame(t: number): void {
   g.setTransform(dpr, 0, 0, dpr, 0, 0)
   if (face) g.drawImage(face, 0, 0, w, h)
 
-  // Needle, over the face, under the glass.
   const cx = w / 2
   const py = h - 40 * s
   const R = py - 16 * s - 28 * s
+
+  // Min/max band: a drag-pointer arc above the scale spanning the window's
+  // extremes, with radial end ticks — the meter's short-term memory.
+  if (wMin <= wMax) {
+    const v2deg = (v: number) =>
+      centerZero
+        ? Math.max(-1.06, Math.min(1.06, v / fs)) * ALPHA
+        : (Math.max(-0.045, Math.min(1.06, v / fs)) * 2 - 1) * ALPHA
+    let d1 = v2deg(wMin)
+    let d2 = v2deg(wMax)
+    if (d2 - d1 < 0.6) {
+      const mid = (d1 + d2) / 2
+      d1 = mid - 0.3
+      d2 = mid + 0.3
+    }
+    const band = '#b3241f'
+    const rb = R + 11 * s
+    g.beginPath()
+    g.arc(cx, py, rb, ((d1 - 90) * Math.PI) / 180, ((d2 - 90) * Math.PI) / 180)
+    g.strokeStyle = 'rgba(179,36,31,0.45)'
+    g.lineWidth = 6 * s
+    g.stroke()
+    for (const d of [d1, d2]) {
+      const a = ((d - 90) * Math.PI) / 180
+      g.beginPath()
+      g.moveTo(cx + (rb - 5 * s) * Math.cos(a), py + (rb - 5 * s) * Math.sin(a))
+      g.lineTo(cx + (rb + 5 * s) * Math.cos(a), py + (rb + 5 * s) * Math.sin(a))
+      g.strokeStyle = band
+      g.lineWidth = 1.8 * s
+      g.stroke()
+    }
+  }
+
+  // Needle, over the face, under the glass.
   g.save()
   g.translate(cx, py)
   g.rotate((theta * Math.PI) / 180)
