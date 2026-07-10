@@ -21,6 +21,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Dev happens on the headless LAN host (playhouse2); allow reaching the dev
+    // server by that name from other machines.
+    allowedHosts: ['playhouse2'],
     proxy: {
       '/api': { target: SERVER_TARGET, changeOrigin: true },
       '/ws': { target: SERVER_TARGET.replace(/^http/, 'ws'), ws: true },
