@@ -2,9 +2,10 @@
 import { ref } from 'vue'
 import TrendChart from './TrendChart.vue'
 import HistogramChart from './HistogramChart.vue'
+import PhosphorChart from './PhosphorChart.vue'
 import { useChartWindow } from '@/composables/useChartWindow'
 
-type Tab = 'trend' | 'histogram'
+type Tab = 'trend' | 'histogram' | 'phosphor'
 const open = ref(true)
 const tab = ref<Tab>('trend')
 const { clear } = useChartWindow()
@@ -46,6 +47,15 @@ function select(t: Tab): void {
         >
           Histogram
         </button>
+        <button
+          class="tab"
+          role="tab"
+          :aria-selected="tab === 'phosphor'"
+          :class="{ active: tab === 'phosphor' }"
+          @click="select('phosphor')"
+        >
+          Phosphor
+        </button>
       </div>
       <a
         class="dl"
@@ -74,6 +84,7 @@ function select(t: Tab): void {
     <div v-show="open" class="body">
       <TrendChart v-show="tab === 'trend'" />
       <HistogramChart v-show="tab === 'histogram'" />
+      <PhosphorChart v-show="tab === 'phosphor'" />
     </div>
   </div>
 </template>
