@@ -13,14 +13,17 @@ import { convertTemp, formatValue, functionUnitSuffix, tempUnitLabel } from '@/l
  * scale; unsigned start at 0. Full scale follows the instrument's manual range
  * exactly; in autorange it auto-selects a 1-2-5 decade from recent readings
  * (expands instantly, shrinks with hysteresis so the scale doesn't pump).
+ *
+ * The whole drawing is proportional: every dimension is a multiple of
+ * `s = width / 760`, so the meter fills whatever width it's given and the
+ * dial typography scales with it.
  */
 
 const store = useMeterStore()
 const { windowed } = useChartWindow()
 const { tempUnit } = useTempUnit()
 
-const HEIGHT = 310
-const MAX_W = 760
+const ASPECT = 0.44 // height / width of the housing
 const ALPHA = 40 // scale half-span, degrees from vertical
 const PEG = 43.5 // mechanical stop, degrees
 
@@ -107,9 +110,8 @@ function unitInfo(): { legend: string; prefExp: number } {
 }
 
 function numeral(v: number, prefExp: number): string {
-  const s = v / 10 ** prefExp
-  const t = Math.abs(s) >= 100 ? s.toFixed(0) : String(Number(s.toPrecision(3)))
-  return t
+  const sv = v / 10 ** prefExp
+  return Math.abs(sv) >= 100 ? sv.toFixed(0) : String(Number(sv.toPrecision(3)))
 }
 
 // -- face rendering (cached offscreen; redrawn only when geometry changes) ------
@@ -121,7 +123,15 @@ function P(cx: number, py: number, r: number, deg: number): [number, number] {
   return [cx + r * Math.sin(a), py - r * Math.cos(a)]
 }
 
-function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend: string, prefExp: number): HTMLCanvasElement {
+function drawFace(
+  w: number,
+  h: number,
+  dpr: number,
+  centerZero: boolean,
+  legend: string,
+  prefExp: number,
+): HTMLCanvasElement {
+  const s = w / 760
   const c = document.createElement('canvas')
   c.width = Math.round(w * dpr)
   c.height = Math.round(h * dpr)
@@ -137,49 +147,50 @@ function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend
   bez.addColorStop(0, '#3a3b41')
   bez.addColorStop(0.08, '#26272c')
   bez.addColorStop(1, '#101014')
-  rr(0, 0, w, h, 16)
+  rr(0, 0, w, h, 16 * s)
   g.fillStyle = bez
   g.fill()
-  rr(1, 1, w - 2, h - 2, 15)
+  rr(1, 1, w - 2, h - 2, 15 * s)
   g.strokeStyle = 'rgba(255,255,255,0.08)'
   g.lineWidth = 1
   g.stroke()
 
   // Face plate.
-  const fx = 16
-  const fy = 16
-  const fw = w - 32
-  const fh = h - 32
+  const inset = 16 * s
+  const fx = inset
+  const fy = inset
+  const fw = w - inset * 2
+  const fh = h - inset * 2
   const cream = g.createLinearGradient(0, fy, 0, fy + fh)
   cream.addColorStop(0, '#f8f3e5')
   cream.addColorStop(0.75, '#f1ead6')
   cream.addColorStop(1, '#e7dfc8')
-  rr(fx, fy, fw, fh, 7)
+  rr(fx, fy, fw, fh, 7 * s)
   g.fillStyle = cream
   g.fill()
   g.save()
-  rr(fx, fy, fw, fh, 7)
+  rr(fx, fy, fw, fh, 7 * s)
   g.clip()
   // Inner shadow cast by the bezel onto the face.
   g.shadowColor = 'rgba(0,0,0,0.45)'
-  g.shadowBlur = 18
-  g.lineWidth = 10
+  g.shadowBlur = 18 * s
+  g.lineWidth = 10 * s
   g.strokeStyle = 'rgba(0,0,0,0)'
-  rr(fx - 5, fy - 5, fw + 10, fh + 10, 10)
+  rr(fx - 5 * s, fy - 5 * s, fw + 10 * s, fh + 10 * s, 10 * s)
   g.stroke()
 
   // Scale geometry: pivot near the face bottom, arc sweeping the top.
   const cx = w / 2
-  const py = h - 40
-  const R = py - fy - 28
+  const py = h - 40 * s
+  const R = py - fy - 28 * s
 
   const ink = '#221f19'
   g.shadowColor = 'transparent'
 
   // Mirror band (anti-parallax): a thin bright silvered strip under the ticks,
   // cooler than the paper so it reads as glass, with crisp bounding rules.
-  const m1 = R - 50
-  const m2 = R - 40
+  const m1 = R - 50 * s
+  const m2 = R - 40 * s
   g.beginPath()
   g.arc(cx, py, m2, ((-ALPHA - 90) * Math.PI) / 180, ((ALPHA - 90) * Math.PI) / 180)
   g.arc(cx, py, m1, ((ALPHA - 90) * Math.PI) / 180, ((-ALPHA - 90) * Math.PI) / 180, true)
@@ -192,14 +203,14 @@ function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend
   g.fillStyle = mir
   g.fill()
   g.strokeStyle = 'rgba(70,66,54,0.8)'
-  g.lineWidth = 0.8
+  g.lineWidth = 0.8 * s
   g.stroke()
 
   // Main arc.
   g.beginPath()
   g.arc(cx, py, R, ((-ALPHA - 90) * Math.PI) / 180, ((ALPHA - 90) * Math.PI) / 180)
   g.strokeStyle = ink
-  g.lineWidth = 2.25
+  g.lineWidth = 2.25 * s
   g.stroke()
 
   // Red overload zones from full deflection to the peg.
@@ -207,7 +218,7 @@ function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend
     g.beginPath()
     g.arc(cx, py, R, ((from - 90) * Math.PI) / 180, ((to - 90) * Math.PI) / 180)
     g.strokeStyle = '#b3241f'
-    g.lineWidth = 4
+    g.lineWidth = 4 * s
     g.stroke()
   }
   red(ALPHA, PEG - 0.5)
@@ -227,33 +238,32 @@ function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend
     g.stroke()
   }
   const lo = centerZero ? -1 : 0
-  for (let f = lo; f <= 1.0001; f += 0.05) tick(f, 9, 1)
-  for (let f = lo; f <= 1.0001; f += 0.25) tick(f, 13, 1.5)
-  for (let f = lo; f <= 1.0001; f += 0.5) tick(f, 17, 2.2)
+  for (let f = lo; f <= 1.0001; f += 0.05) tick(f, 9 * s, Math.max(1, 1 * s))
+  for (let f = lo; f <= 1.0001; f += 0.25) tick(f, 13 * s, 1.5 * s)
+  for (let f = lo; f <= 1.0001; f += 0.5) tick(f, 17 * s, 2.2 * s)
 
   // Numerals just inside the ticks, upright like a printed dial.
   g.fillStyle = ink
-  g.font = '600 13.5px "Noto Sans", sans-serif'
+  g.font = `600 ${13.5 * s}px "Noto Sans", sans-serif`
   g.textAlign = 'center'
   g.textBaseline = 'middle'
   const step = centerZero ? 0.5 : 0.25
   for (let f = lo; f <= 1.0001; f += step) {
-    const v = centerZero ? f * fs : f * fs
-    const [tx, ty] = P(cx, py, R - 27, frac2deg(f))
-    g.fillText(numeral(v, prefExp), tx, ty)
+    const [tx, ty] = P(cx, py, R - 27 * s, frac2deg(f))
+    g.fillText(numeral(f * fs, prefExp), tx, ty)
   }
 
   // Unit legend — the big engraved marking under the scale.
-  g.font = 'italic 700 30px Georgia, "Times New Roman", serif'
+  g.font = `italic 700 ${30 * s}px Georgia, "Times New Roman", serif`
   g.fillStyle = '#2b2822'
   g.fillText(legend, cx, py - R * 0.42)
 
   // Maker's small print, tucked down by the hub like a real dial.
-  g.font = '600 9px "Noto Sans", sans-serif'
+  g.font = `600 ${9 * s}px "Noto Sans", sans-serif`
   g.fillStyle = 'rgba(43,40,34,0.62)'
-  g.fillText('SCPI SOFTPANEL', cx, py - 52)
-  g.font = '500 8px "Noto Sans", sans-serif'
-  g.fillText('TAUT BAND · CL 1.5 · MOD SDM3045X', cx, py - 40)
+  g.fillText('SCPI SOFTPANEL', cx, py - 52 * s)
+  g.font = `500 ${8 * s}px "Noto Sans", sans-serif`
+  g.fillText('TAUT BAND · CL 1.5 · MOD SDM3045X', cx, py - 40 * s)
 
   g.restore()
   return c
@@ -263,11 +273,11 @@ function drawFace(w: number, h: number, dpr: number, centerZero: boolean, legend
 function frame(t: number): void {
   raf = requestAnimationFrame(frame)
   if (!wrap.value || !cv.value) return
-  const cssW = Math.min(wrap.value.clientWidth, MAX_W)
-  if (cssW === 0 || document.hidden) return
+  const w = wrap.value.clientWidth
+  if (w === 0 || document.hidden) return
   const dpr = window.devicePixelRatio || 1
-  const w = cssW
-  const h = HEIGHT
+  const s = w / 760
+  const h = Math.round(w * ASPECT)
   const now = Date.now()
 
   const st = store.state
@@ -324,23 +334,23 @@ function frame(t: number): void {
 
   // Needle, over the face, under the glass.
   const cx = w / 2
-  const py = h - 40
-  const R = py - 16 - 28
+  const py = h - 40 * s
+  const R = py - 16 * s - 28 * s
   g.save()
   g.translate(cx, py)
   g.rotate((theta * Math.PI) / 180)
   // Knife-edge pointer with a drop shadow that falls onto the face.
   g.shadowColor = 'rgba(30,20,10,0.30)'
-  g.shadowOffsetX = 3
-  g.shadowOffsetY = 5
-  g.shadowBlur = 4
+  g.shadowOffsetX = 3 * s
+  g.shadowOffsetY = 5 * s
+  g.shadowBlur = 4 * s
   g.beginPath()
-  g.moveTo(-2.1, 12)
-  g.lineTo(-0.55, -(R - 6))
-  g.lineTo(0.55, -(R - 6))
-  g.lineTo(2.1, 12)
+  g.moveTo(-2.1 * s, 12 * s)
+  g.lineTo(-0.55 * s, -(R - 6 * s))
+  g.lineTo(0.55 * s, -(R - 6 * s))
+  g.lineTo(2.1 * s, 12 * s)
   g.closePath()
-  const steel = g.createLinearGradient(-2, 0, 2, 0)
+  const steel = g.createLinearGradient(-2 * s, 0, 2 * s, 0)
   steel.addColorStop(0, '#1c1c22')
   steel.addColorStop(0.5, '#3a3a45')
   steel.addColorStop(1, '#131318')
@@ -348,10 +358,10 @@ function frame(t: number): void {
   g.fill()
   // Counterweight tail (kept short so it never leaves the face).
   g.beginPath()
-  g.rect(-1.4, 12, 2.8, 12)
+  g.rect(-1.4 * s, 12 * s, 2.8 * s, 12 * s)
   g.fill()
   g.beginPath()
-  g.arc(0, 21, 4.6, 0, Math.PI * 2)
+  g.arc(0, 21 * s, 4.6 * s, 0, Math.PI * 2)
   g.fillStyle = '#22222a'
   g.fill()
   g.restore()
@@ -359,12 +369,12 @@ function frame(t: number): void {
   // Hub with a screw slot.
   g.save()
   g.translate(cx, py)
-  const hub = g.createRadialGradient(-4, -5, 2, 0, 0, 15)
+  const hub = g.createRadialGradient(-4 * s, -5 * s, 2 * s, 0, 0, 15 * s)
   hub.addColorStop(0, '#5b5c66')
   hub.addColorStop(0.55, '#2c2d34')
   hub.addColorStop(1, '#121217')
   g.beginPath()
-  g.arc(0, 0, 14, 0, Math.PI * 2)
+  g.arc(0, 0, 14 * s, 0, Math.PI * 2)
   g.fillStyle = hub
   g.fill()
   g.strokeStyle = 'rgba(0,0,0,0.6)'
@@ -372,17 +382,17 @@ function frame(t: number): void {
   g.stroke()
   g.rotate(0.45)
   g.beginPath()
-  g.moveTo(-9, 0)
-  g.lineTo(9, 0)
+  g.moveTo(-9 * s, 0)
+  g.lineTo(9 * s, 0)
   g.strokeStyle = 'rgba(0,0,0,0.55)'
-  g.lineWidth = 2.4
+  g.lineWidth = 2.4 * s
   g.stroke()
   g.restore()
 
   // Glass: a soft diagonal sheen over everything.
   g.save()
   g.beginPath()
-  g.roundRect(16, 16, w - 32, h - 32, 7)
+  g.roundRect(16 * s, 16 * s, w - 32 * s, h - 32 * s, 7 * s)
   g.clip()
   const sheen = g.createLinearGradient(0, 0, w * 0.55, h)
   sheen.addColorStop(0, 'rgba(255,255,255,0.16)')
@@ -390,10 +400,10 @@ function frame(t: number): void {
   sheen.addColorStop(0.55, 'rgba(255,255,255,0)')
   g.fillStyle = sheen
   g.beginPath()
-  g.moveTo(16, 16)
-  g.lineTo(w * 0.52, 16)
-  g.lineTo(w * 0.24, h - 16)
-  g.lineTo(16, h - 16)
+  g.moveTo(16 * s, 16 * s)
+  g.lineTo(w * 0.52, 16 * s)
+  g.lineTo(w * 0.24, h - 16 * s)
+  g.lineTo(16 * s, h - 16 * s)
   g.closePath()
   g.fill()
   g.restore()
@@ -414,8 +424,7 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
 
 <style scoped>
 .meter {
-  display: flex;
-  justify-content: center;
+  width: 100%;
 }
 .meter canvas {
   display: block;
