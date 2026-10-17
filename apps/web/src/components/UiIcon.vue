@@ -21,6 +21,8 @@ type IconName =
   | 'close'
   | 'refresh'
   | 'zoom-out'
+  | 'speaker'
+  | 'speaker-off'
 
 withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 16 })
 
@@ -56,6 +58,8 @@ const PATHS: Record<IconName, string[]> = {
   layers: ['M12 3l9 5-9 5-9-5 9-5z', 'M3 13l9 5 9-5'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   refresh: ['M21 12a9 9 0 1 1-3-6.7L21 8', 'M21 3v5h-5'],
+  speaker: ['M4 9v6h4l5 4V5L8 9z', 'M16.5 9.5a3.5 3.5 0 0 1 0 5', 'M19.5 6.5a7.5 7.5 0 0 1 0 11'],
+  'speaker-off': ['M4 9v6h4l5 4V5L8 9z', 'M16 9.5l5 5M21 9.5l-5 5'],
   'zoom-out': ['M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13', 'M20 20l-4.8-4.8', 'M7.5 10.5h6'],
 }
 </script>

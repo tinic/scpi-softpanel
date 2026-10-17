@@ -11,6 +11,7 @@ import { useMeterStore } from '@/stores/meter'
 import { formatRangeLabel, formatValue } from '@/lib/format'
 import { useTempUnit } from '@/composables/useTempUnit'
 import type { TempUnit } from '@/lib/format'
+import FunctionGlyph from './FunctionGlyph.vue'
 
 const store = useMeterStore()
 const { tempUnit, setTempUnit } = useTempUnit()
@@ -104,7 +105,8 @@ const polling = computed(() => store.state?.polling ?? false)
         :aria-pressed="store.state?.function === fn"
         @click="store.setFunction(fn)"
       >
-        <template v-if="splitShort(FUNCTION_INFO[fn].short).sym"
+        <FunctionGlyph v-if="fn === 'CONT' || fn === 'DIOD'" :fn="fn" />
+        <template v-else-if="splitShort(FUNCTION_INFO[fn].short).sym"
           >{{ splitShort(FUNCTION_INFO[fn].short).pre
           }}<span class="sym">{{ splitShort(FUNCTION_INFO[fn].short).sym }}</span></template
         >

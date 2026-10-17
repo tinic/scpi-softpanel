@@ -132,7 +132,7 @@ const stale = computed(() => !store.instrumentConnected && !!store.lastReading)
             "
             @click="toggleSound"
           >
-            {{ soundOn ? '◗))' : '◗' }}
+            <UiIcon :name="soundOn ? 'speaker' : 'speaker-off'" :size="14" />
           </button>
           <input
             v-model.number="volPct"
@@ -271,9 +271,11 @@ const stale = computed(() => !store.instrumentConnected && !!store.lastReading)
   box-shadow: 0 0 8px var(--good);
 }
 .snd {
-  padding: 1px 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1;
   border-radius: 999px;
   color: var(--muted);
 }
