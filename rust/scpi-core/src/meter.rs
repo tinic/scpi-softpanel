@@ -7,6 +7,7 @@
 //! `watch` channel (for REST/snapshot) and streams [`ServerMessage`]s on a
 //! `broadcast` channel (for live WS push).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,6 +19,7 @@ use crate::functions::{parse_function_response, parse_reading_value, MeterFuncti
 use crate::messages::{ConsoleEntry, Direction, MeterState, Reading, ServerMessage};
 use crate::ring::RingStore;
 use crate::scpi::ScpiSession;
+use crate::sessions::{Marker, Recorder};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -43,6 +45,13 @@ pub enum Command {
     },
     MeasureOnce,
     Refresh,
+    StartRecording {
+        name: String,
+        duration_ms: Option<u64>,
+    },
+    StopRecording,
+    AddMarker(String),
+    ClearMarkers,
     Raw {
         cmd: String,
         expect_reply: bool,
@@ -59,6 +68,8 @@ pub struct MeterConfig {
     pub poll_autostart: bool,
     pub reconnect_delay: Duration,
     pub ring_capacity: usize,
+    /// Where recording sessions are written. None disables recording.
+    pub sessions_dir: Option<PathBuf>,
 }
 
 /// The VISA resource string for a host/port, or None when no host is configured.
@@ -80,7 +91,12 @@ pub struct MeterHandle {
     pub ring: Arc<Mutex<RingStore>>,
     /// Rolling CSV export buffer (capped block deque) backing the `.csv` download.
     pub csv: Arc<Mutex<CsvLog>>,
+    /// Recording sessions directory (for listing/downloading finished sessions).
+    pub sessions_dir: Option<PathBuf>,
 }
+
+/// Live markers kept in state (the trend only spans the ring anyway).
+const MAX_MARKERS: usize = 100;
 
 pub fn spawn(cfg: MeterConfig) -> MeterHandle {
     let (cmd_tx, cmd_rx) = mpsc::channel(64);
@@ -105,7 +121,11 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         polling: cfg.poll_autostart,
         interval_ms: cfg.poll_interval_ms,
         last_error: None,
+        recording: None,
+        recording_available: cfg.sessions_dir.is_some(),
+        markers: Vec::new(),
     };
+    let sessions_dir = cfg.sessions_dir.clone();
     let (state_tx, state_rx) = watch::channel(state.clone());
 
     let meter = Meter {
@@ -116,6 +136,7 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         events: events_tx.clone(),
         ring: ring.clone(),
         csv: csv.clone(),
+        recorder: Recorder::new(sessions_dir.clone()),
         serial: None,
         next_seq: 1,
         next_reconnect: Instant::now(),
@@ -129,6 +150,7 @@ pub fn spawn(cfg: MeterConfig) -> MeterHandle {
         events: events_tx,
         ring,
         csv,
+        sessions_dir,
     }
 }
 
@@ -140,6 +162,7 @@ struct Meter {
     events: broadcast::Sender<ServerMessage>,
     ring: Arc<Mutex<RingStore>>,
     csv: Arc<Mutex<CsvLog>>,
+    recorder: Recorder,
     /// Instrument serial (parsed from IDN), stamped on every CSV row.
     serial: Option<String>,
     /// Monotonic per-reading sequence number (the CSV `seq` column).
@@ -220,6 +243,14 @@ impl Meter {
         }
     }
 
+    /// A disk error while recording ends the session rather than failing silently.
+    fn recording_failed(&mut self, e: &std::io::Error) {
+        let _ = self.recorder.stop(now_ms());
+        self.state.recording = None;
+        self.publish();
+        self.console(Direction::Error, &format!("recording: {e}"));
+    }
+
     /// Drop a dead session so the reconnect loop takes over.
     fn drop_session(&mut self, context: &str, e: &std::io::Error) {
         self.session = None;
@@ -242,6 +273,15 @@ impl Meter {
         self.next_seq += 1;
         let row = self.csv_row(seq, &reading);
         self.csv.lock().await.push_row(&row);
+        match self.recorder.push(&row, &reading.function, reading.ts) {
+            Ok(true) => {
+                self.state.recording = None;
+                self.publish();
+                self.console(Direction::Info, "recording finished (duration reached)");
+            }
+            Ok(false) => {}
+            Err(e) => self.recording_failed(&e),
+        }
         self.ring.lock().await.push(reading.clone());
         let _ = self.events.send(ServerMessage::Reading { reading });
     }
@@ -302,6 +342,53 @@ impl Meter {
                 self.publish();
                 return;
             }
+            Command::StartRecording { name, duration_ms } => {
+                match self
+                    .recorder
+                    .start(&name, duration_ms, self.serial.clone(), now_ms())
+                {
+                    Ok(info) => {
+                        self.console(Direction::Info, &format!("recording \"{}\"", info.name));
+                        self.state.recording = Some(info);
+                    }
+                    Err(e) => self.recording_failed(&e),
+                }
+                self.publish();
+                return;
+            }
+            Command::StopRecording => {
+                match self.recorder.stop(now_ms()) {
+                    Ok(Some(meta)) => self.console(
+                        Direction::Info,
+                        &format!("recording stopped: {} readings", meta.count),
+                    ),
+                    Ok(None) => {}
+                    Err(e) => self.recording_failed(&e),
+                }
+                self.state.recording = None;
+                self.publish();
+                return;
+            }
+            Command::AddMarker(text) => {
+                let marker = Marker {
+                    ts: now_ms(),
+                    text: text.trim().chars().take(200).collect(),
+                };
+                if let Err(e) = self.recorder.mark(marker.clone()) {
+                    self.recording_failed(&e);
+                }
+                self.state.markers.push(marker);
+                if self.state.markers.len() > MAX_MARKERS {
+                    self.state.markers.remove(0);
+                }
+                self.publish();
+                return;
+            }
+            Command::ClearMarkers => {
+                self.state.markers.clear();
+                self.publish();
+                return;
+            }
             Command::SetTarget { host, port } => {
                 // Drop the current session and reconnect to the new instrument now
                 // (or idle, if the host was cleared).
@@ -343,7 +430,11 @@ impl Meter {
             Command::SetPolling(_)
             | Command::SetInterval(_)
             | Command::SetConnected(_)
-            | Command::SetTarget { .. } => Ok(()),
+            | Command::SetTarget { .. }
+            | Command::StartRecording { .. }
+            | Command::StopRecording
+            | Command::AddMarker(_)
+            | Command::ClearMarkers => Ok(()),
         };
         if let Err(e) = result {
             self.drop_session("command", &e);

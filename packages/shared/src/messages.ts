@@ -14,6 +14,44 @@ export const ReadingSchema = z.object({
 })
 export type Reading = z.infer<typeof ReadingSchema>
 
+/** A note pinned to a moment on the trend (and into the recording, if any). */
+export const MarkerSchema = z.object({ ts: z.number(), text: z.string() })
+export type Marker = z.infer<typeof MarkerSchema>
+
+/** The session currently being recorded to disk. */
+export const RecordingInfoSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  started: z.number(),
+  durationMs: z.number().nullable(),
+})
+export type RecordingInfo = z.infer<typeof RecordingInfoSchema>
+
+/** A recorded session on disk (`GET /api/sessions`). */
+export const SessionMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  started: z.number(),
+  ended: z.number().nullable(), // null while recording, or if the app died mid-session
+  durationMs: z.number().nullable(),
+  count: z.number(),
+  functions: z.array(z.string()),
+  serial: z.string().nullable(),
+  markers: z.array(MarkerSchema).default([]),
+})
+export type SessionMeta = z.infer<typeof SessionMetaSchema>
+
+/** A session's readings, min/max-decimated for charting (`GET /api/sessions/:id`). */
+export const SessionDataSchema = z.object({
+  meta: SessionMetaSchema,
+  ts: z.array(z.number()),
+  values: z.array(z.number().nullable()), // null = overload
+  unit: z.string(),
+  function: z.string(),
+  total: z.number(),
+})
+export type SessionData = z.infer<typeof SessionDataSchema>
+
 /** Full instrument + broker state, broadcast on change. */
 export const MeterStateSchema = z.object({
   connected: z.boolean(),
@@ -37,6 +75,9 @@ export const MeterStateSchema = z.object({
   polling: z.boolean(),
   intervalMs: z.number(),
   lastError: z.string().nullable(),
+  recording: RecordingInfoSchema.nullable().default(null),
+  recordingAvailable: z.boolean().default(false),
+  markers: z.array(MarkerSchema).default([]),
 })
 export type MeterState = z.infer<typeof MeterStateSchema>
 
@@ -58,6 +99,14 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setInterval'), intervalMs: z.number().int().min(50).max(60000) }),
   z.object({ type: z.literal('measureOnce') }),
   z.object({ type: z.literal('refresh') }),
+  z.object({
+    type: z.literal('startRecording'),
+    name: z.string(),
+    durationMs: z.number().int().positive().nullable(),
+  }),
+  z.object({ type: z.literal('stopRecording') }),
+  z.object({ type: z.literal('addMarker'), text: z.string() }),
+  z.object({ type: z.literal('clearMarkers') }),
   z.object({ type: z.literal('raw'), cmd: z.string().min(1), expectReply: z.boolean() }),
 ])
 export type ClientMessage = z.infer<typeof ClientMessageSchema>

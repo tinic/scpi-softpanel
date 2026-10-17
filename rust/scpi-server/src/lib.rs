@@ -6,13 +6,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use scpi_core::messages::ClientMessage;
 use scpi_core::meter::Command;
+use scpi_core::sessions;
 use scpi_core::{MeterHandle, ServerMessage};
 use serde_json::json;
 
@@ -26,8 +27,8 @@ pub struct AppState {
     pub config_path: Option<Arc<PathBuf>>,
 }
 
-/// Router exposing `/api/health`, `/api/state`, `/api/readings`, `/api/config`, and
-/// `/ws`. The caller supplies static-asset serving via `.fallback_service(...)`.
+/// Router exposing `/api/health`, `/api/state`, `/api/readings`, `/api/config`,
+/// `/api/sessions`, and `/ws`. The caller supplies static-asset serving via `.fallback_service(...)`.
 pub fn api_router(handle: MeterHandle, config_path: Option<PathBuf>) -> Router {
     Router::new()
         .route("/api/health", get(health))
@@ -35,6 +36,12 @@ pub fn api_router(handle: MeterHandle, config_path: Option<PathBuf>) -> Router {
         .route("/api/readings", get(api_readings))
         .route("/api/readings.csv", get(api_readings_csv))
         .route("/api/config", get(get_config).put(put_config))
+        .route("/api/sessions", get(list_sessions))
+        .route(
+            "/api/sessions/:id",
+            get(session_data).delete(delete_session),
+        )
+        .route("/api/sessions/:id/csv", get(session_csv))
         .route("/ws", get(ws_upgrade))
         .with_state(AppState {
             handle,
@@ -80,6 +87,111 @@ async fn api_readings_csv(State(app): State<AppState>) -> impl IntoResponse {
         ],
         body,
     )
+}
+
+// -- recording sessions -----------------------------------------------------
+
+fn not_configured() -> Response {
+    (StatusCode::NOT_FOUND, "recording is not configured").into_response()
+}
+
+async fn list_sessions(State(app): State<AppState>) -> Response {
+    let list = match app.handle.sessions_dir.as_deref() {
+        Some(dir) => sessions::list(dir),
+        None => Vec::new(),
+    };
+    Json(list).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct SessionDataQuery {
+    points: Option<usize>,
+}
+
+/// A session's readings, decimated for charting (`?points=`, default 4000).
+async fn session_data(
+    State(app): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<SessionDataQuery>,
+) -> Response {
+    let Some(dir) = app.handle.sessions_dir.clone() else {
+        return not_configured();
+    };
+    let points = q.points.unwrap_or(4000).clamp(100, 20_000);
+    // File parsing is blocking work; keep it off the async workers.
+    match tokio::task::spawn_blocking(move || sessions::load_data(&dir, &id, points)).await {
+        Ok(Ok(data)) => Json(data).into_response(),
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            StatusCode::NOT_FOUND.into_response()
+        }
+        Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn session_csv(State(app): State<AppState>, Path(id): Path<String>) -> Response {
+    let Some(dir) = app.handle.sessions_dir.as_deref() else {
+        return not_configured();
+    };
+    let (Some(path), Some(meta)) = (sessions::csv_path(dir, &id), sessions::meta(dir, &id)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::fs::read(path).await {
+        Ok(body) => (
+            [
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    "text/csv; charset=utf-8".to_string(),
+                ),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}.csv\"", file_stem(&meta.name)),
+                ),
+            ],
+            body,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn delete_session(State(app): State<AppState>, Path(id): Path<String>) -> Response {
+    let Some(dir) = app.handle.sessions_dir.as_deref() else {
+        return not_configured();
+    };
+    // Refuse to delete the file still being written.
+    if app
+        .handle
+        .state_rx
+        .borrow()
+        .recording
+        .as_ref()
+        .is_some_and(|r| r.id == id)
+    {
+        return (StatusCode::CONFLICT, "session is still recording").into_response();
+    }
+    match sessions::delete(dir, &id) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
+}
+
+/// A session name made safe for a download filename.
+fn file_stem(name: &str) -> String {
+    let s: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    match s.trim() {
+        "" => "session".to_string(),
+        t => t.to_string(),
+    }
 }
 
 // -- meter target (settings) ------------------------------------------------
@@ -213,6 +325,12 @@ fn to_command(msg: ClientMessage) -> Command {
         ClientMessage::SetInterval { interval_ms } => Command::SetInterval(interval_ms),
         ClientMessage::MeasureOnce => Command::MeasureOnce,
         ClientMessage::Refresh => Command::Refresh,
+        ClientMessage::StartRecording { name, duration_ms } => {
+            Command::StartRecording { name, duration_ms }
+        }
+        ClientMessage::StopRecording => Command::StopRecording,
+        ClientMessage::AddMarker { text } => Command::AddMarker(text),
+        ClientMessage::ClearMarkers => Command::ClearMarkers,
         ClientMessage::Raw { cmd, expect_reply } => Command::Raw { cmd, expect_reply },
     }
 }

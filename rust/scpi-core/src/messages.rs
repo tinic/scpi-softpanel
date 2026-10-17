@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::functions::MeterFunction;
+use crate::sessions::{Marker, RecordingInfo};
 
 /// A single measurement sample.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +50,13 @@ pub struct MeterState {
     pub polling: bool,
     pub interval_ms: u64,
     pub last_error: Option<String>,
+    /// The session being recorded to disk, if any.
+    pub recording: Option<RecordingInfo>,
+    /// Whether recording is possible at all (a sessions directory is configured).
+    pub recording_available: bool,
+    /// Recent markers dropped on the live trend (also saved into the session when
+    /// one is recording). Capped; oldest first.
+    pub markers: Vec<Marker>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -131,6 +139,16 @@ pub enum ClientMessage {
     },
     MeasureOnce,
     Refresh,
+    #[serde(rename_all = "camelCase")]
+    StartRecording {
+        name: String,
+        duration_ms: Option<u64>,
+    },
+    StopRecording,
+    AddMarker {
+        text: String,
+    },
+    ClearMarkers,
     #[serde(rename_all = "camelCase")]
     Raw {
         cmd: String,

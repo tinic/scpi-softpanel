@@ -71,13 +71,33 @@ fn main() {
 /// Webview download handler. WRY downloads are disabled until a handler is set;
 /// here we pop a native "Save As" dialog and download to the chosen path. (In a
 /// plain browser the `<a download>` link handles this itself; this only matters in
-/// the desktop webview.)
+/// the desktop webview.) The suggested name comes from the webview's own pick
+/// (`destination`, which honors Content-Disposition / `download=`), falling back to
+/// the URL — so session CSVs and chart PNGs keep their names.
 fn on_download(_webview: tauri::Webview, event: tauri::webview::DownloadEvent<'_>) -> bool {
     match event {
-        tauri::webview::DownloadEvent::Requested { destination, .. } => {
+        tauri::webview::DownloadEvent::Requested { url, destination } => {
+            let name = destination
+                .file_name()
+                .and_then(|n| n.to_str())
+                .filter(|n| n.contains('.'))
+                .map(str::to_string)
+                .or_else(|| {
+                    url.path_segments()
+                        .and_then(|mut s| s.next_back())
+                        .filter(|n| n.contains('.'))
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| "scpi-readings.csv".to_string());
+            let ext = name
+                .rsplit('.')
+                .next()
+                .unwrap_or("csv")
+                .to_ascii_lowercase();
+            let filter = if ext == "png" { "PNG image" } else { "CSV" };
             match rfd::FileDialog::new()
-                .set_file_name("scpi-readings.csv")
-                .add_filter("CSV", &["csv"])
+                .set_file_name(&name)
+                .add_filter(filter, &[ext.as_str()])
                 .save_file()
             {
                 Some(path) => {
@@ -120,6 +140,8 @@ fn meter_config(config_path: Option<&std::path::Path>) -> MeterConfig {
         ),
         reconnect_delay: Duration::from_millis(3000),
         ring_capacity: env("RING_CAPACITY", "3600").parse().unwrap_or(3600),
+        // e.g. ~/.local/share/com.tinic.scpisoftpanel/sessions on Linux.
+        sessions_dir: dirs::data_dir().map(|d| d.join("com.tinic.scpisoftpanel").join("sessions")),
     }
 }
 

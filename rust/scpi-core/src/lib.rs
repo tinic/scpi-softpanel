@@ -8,6 +8,7 @@ pub mod messages;
 pub mod meter;
 pub mod ring;
 pub mod scpi;
+pub mod sessions;
 
 pub use functions::MeterFunction;
 pub use messages::{ClientMessage, MeterState, Reading, ServerMessage};

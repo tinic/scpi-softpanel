@@ -40,6 +40,7 @@ async fn main() {
         poll_autostart: cfg.poll_autostart,
         reconnect_delay: Duration::from_millis(3000),
         ring_capacity: cfg.ring_capacity,
+        sessions_dir: Some(cfg.sessions_dir.clone()),
     });
 
     let mut app = api_router(handle, cfg.config_path.clone());
@@ -57,6 +58,7 @@ async fn main() {
     }
 
     let listener = tokio::net::TcpListener::bind(bind).await.expect("bind");
+    tracing::info!("recording sessions to {}", cfg.sessions_dir.display());
     tracing::info!(
         "scpi-server on http://{bind}  (meter {}:{})",
         cfg.meter_host,
@@ -85,6 +87,9 @@ struct Config {
     web_dist: PathBuf,
     /// Optional persisted-settings file (env `CONFIG_PATH`).
     config_path: Option<PathBuf>,
+    /// Recording sessions directory (env `SESSIONS_DIR`; defaults to `sessions/`
+    /// next to `CONFIG_PATH`, else `./sessions`). Created on first recording.
+    sessions_dir: PathBuf,
 }
 
 impl Config {
@@ -93,6 +98,14 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty())
             .map(PathBuf::from);
+        let sessions_dir = std::env::var("SESSIONS_DIR")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| match config_path.as_ref().and_then(|p| p.parent()) {
+                Some(dir) => dir.join("sessions"),
+                None => PathBuf::from("sessions"),
+            });
         Config {
             host: env("HOST", "0.0.0.0"),
             port: env("PORT", "8080").parse().unwrap_or(8080),
@@ -108,6 +121,7 @@ impl Config {
             ring_capacity: env("RING_CAPACITY", "3600").parse().unwrap_or(3600),
             web_dist: PathBuf::from(env("WEB_DIST", "../apps/web/dist")),
             config_path,
+            sessions_dir,
         }
     }
 }
