@@ -7,6 +7,8 @@ import type {
   MeterState,
   Reading,
   ServerMessage,
+  SessionData,
+  SessionMeta,
 } from '@scpi/shared'
 
 const MAX_READINGS = 3600
@@ -110,6 +112,11 @@ export const useMeterStore = defineStore('meter', () => {
   const measureOnce = () => send({ type: 'measureOnce' })
   const refresh = () => send({ type: 'refresh' })
   const raw = (cmd: string, expectReply: boolean) => send({ type: 'raw', cmd, expectReply })
+  const startRecording = (name: string, durationMs: number | null) =>
+    send({ type: 'startRecording', name, durationMs })
+  const stopRecording = () => send({ type: 'stopRecording' })
+  const addMarker = (text: string) => send({ type: 'addMarker', text })
+  const clearMarkers = () => send({ type: 'clearMarkers' })
   const clearConsole = () => {
     consoleLog.value = []
   }
@@ -124,6 +131,21 @@ export const useMeterStore = defineStore('meter', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ meterHost, meterPort }),
     })
+  }
+
+  // -- recorded sessions (REST: listing/loading files is not live state) --------
+  async function listSessions(): Promise<SessionMeta[]> {
+    const res = await fetch('/api/sessions')
+    return res.ok ? res.json() : []
+  }
+  async function getSession(id: string, points = 4000): Promise<SessionData> {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}?points=${points}`)
+    if (!res.ok) throw new Error(`session ${id}: ${res.status}`)
+    return res.json()
+  }
+  async function deleteSession(id: string): Promise<void> {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(await res.text())
   }
 
   return {
@@ -148,6 +170,13 @@ export const useMeterStore = defineStore('meter', () => {
     measureOnce,
     refresh,
     raw,
+    startRecording,
+    stopRecording,
+    addMarker,
+    clearMarkers,
+    listSessions,
+    getSession,
+    deleteSession,
     clearConsole,
     getConfig,
     saveConfig,

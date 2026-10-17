@@ -99,6 +99,33 @@ export function startTone(): void {
   active = { master, oscs }
 }
 
+/**
+ * Limit-fail alarm: two short descending beeps, distinct from the continuity tone.
+ * Uses the same volume setting; fire-and-forget.
+ */
+export function alarmTone(): void {
+  ctx ??= new AudioContext()
+  if (ctx.state === 'suspended') {
+    void ctx.resume()
+    installUnlockListener()
+  }
+  const t0 = ctx.currentTime
+  for (const [i, freq] of [1320, 990].entries()) {
+    const t = t0 + i * 0.16
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = freq
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(MAX_GAIN * Math.max(volume, 0.3), t + 0.01)
+    g.gain.setTargetAtTime(0, t + 0.09, 0.02)
+    osc.connect(g)
+    g.connect(ctx.destination)
+    osc.start(t)
+    osc.stop(t + 0.2)
+  }
+}
+
 export function stopTone(): void {
   if (!ctx || !active) return
   const { master, oscs } = active

@@ -1,14 +1,25 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { FUNCTION_INFO } from '@scpi/shared'
 import { useMeterStore } from '@/stores/meter'
-import { formatReading } from '@/lib/format'
-import { useTempUnit } from '@/composables/useTempUnit'
+import { useDisplay } from '@/composables/useDisplay'
 import { useDisplayFont } from '@/composables/useDisplayFont'
+import { useHold } from '@/composables/useHold'
+import { useLimits } from '@/composables/useLimits'
+import { useStats } from '@/composables/useStats'
+import { useUi } from '@/composables/useUi'
 import { blipTone, onToneBlocked, setToneVolume, startTone, stopTone } from '@/lib/tone'
+import AnnunciatorStrip from './AnnunciatorStrip.vue'
+import StatsStrip from './StatsStrip.vue'
+import UiIcon from './UiIcon.vue'
+
+const props = withDefaults(defineProps<{ big?: boolean }>(), { big: false })
 
 const store = useMeterStore()
-const { tempUnit } = useTempUnit()
+const { channel } = useDisplay()
+const { held, toggle: toggleHold } = useHold()
+const { verdict } = useLimits()
+const { stable } = useStats()
+const { bigMode } = useUi()
 
 // Display font is a preference; expose it as CSS vars on the readout root.
 const { displayFont, fonts } = useDisplayFont()
@@ -19,9 +30,9 @@ const fontVars = computed(() => ({
 
 // -- continuity tone -------------------------------------------------------
 // Follows the meter's own threshold (CONT:THR:VAL, in state); 50 Ω is its default.
+// Only the docked readout drives the tone (the big view is a second copy).
 const threshold = computed(() => store.state?.contThreshold ?? 50)
 const SOUND_PREF_KEY = 'scpi.contSound'
-
 const VOLUME_PREF_KEY = 'scpi.contVolume'
 
 const soundOn = ref(localStorage.getItem(SOUND_PREF_KEY) !== 'off')
@@ -51,9 +62,8 @@ const unsubBlocked = onToneBlocked((b) => (audioBlocked.value = b))
 // each closed-circuit reading re-arms this.
 let staleTimer: ReturnType<typeof setTimeout> | null = null
 
-watch(
-  [() => store.lastReading, () => store.state?.function, soundOn],
-  () => {
+if (!props.big) {
+  watch([() => store.lastReading, () => store.state?.function, soundOn], () => {
     const r = store.lastReading
     const closed =
       soundOn.value &&
@@ -68,146 +78,204 @@ watch(
     } else {
       stopTone()
     }
-  },
-  { deep: false },
-)
+  })
+}
 
 onBeforeUnmount(() => {
   if (staleTimer) clearTimeout(staleTimer)
   unsubBlocked()
-  stopTone()
+  if (!props.big) stopTone()
 })
 
-const functionLabel = computed(() => {
-  const fn = store.state?.function
-  return fn ? FUNCTION_INFO[fn].label : '—'
-})
-
-const isCont = computed(() => store.lastReading?.function === 'CONT')
+// -- the value ---------------------------------------------------------------
+const shown = computed(() => held.value ?? store.lastReading)
+const isCont = computed(() => shown.value?.function === 'CONT')
 
 const display = computed(() => {
-  const r = store.lastReading
-  if (!r) return { sign: '', text: '––––', unit: '' }
-  return formatReading(r, tempUnit.value)
+  const r = shown.value
+  if (!r || r.function !== store.state?.function) return { sign: '', text: '––––', unit: '' }
+  const ch = channel.value
+  if (r.overload && !isCont.value) return { sign: '', text: 'OL', unit: ch.format(0).unit }
+  return ch.format(ch.value(r))
 })
 
-const overload = computed(() => store.lastReading?.overload ?? false)
+const overload = computed(() => shown.value?.overload ?? false)
 // An open circuit is continuity's resting state, not an alarm — styled muted, not warn.
 const contOpen = computed(() => overload.value && isCont.value)
-
-// Baseline for the min/avg/max window; advancing it "clears" the stats so they
-// re-accumulate from the current reading onward.
-const statsSince = ref(0)
-function clearStats() {
-  statsSince.value = store.lastReading?.ts ?? Date.now()
-}
-
-const stats = computed(() => {
-  // min/max/avg over the in-range window since the last clear; only readings from
-  // the current function count, or a function switch would mix incompatible units.
-  const fn = store.lastReading?.function
-  const vals = store.readings
-    .filter((r) => r.function === fn && Number.isFinite(r.value) && r.ts >= statsSince.value)
-    .map((r) => r.value)
-  if (vals.length === 0) return null
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  const avg = vals.reduce((a, b) => a + b, 0) / vals.length
-  const unit = store.lastReading?.unit ?? ''
-  const fmt = (v: number) => formatReading({ value: v, unit, function: fn }, tempUnit.value)
-  return {
-    min: fmt(min),
-    max: fmt(max),
-    avg: fmt(avg),
-  }
-})
+const stale = computed(() => !store.instrumentConnected && !!store.lastReading)
 </script>
 
 <template>
-  <div class="live" :style="fontVars">
-    <div class="fn">
-      {{ functionLabel }}
-      <template v-if="store.state?.function === 'CONT'">
-        <button
-          class="snd"
-          :class="{ on: soundOn && !audioBlocked, blocked: soundOn && audioBlocked }"
+  <div
+    class="live"
+    :class="{
+      big: props.big,
+      pass: verdict === 'pass',
+      fail: verdict === 'lo' || verdict === 'hi',
+    }"
+    :style="fontVars"
+  >
+    <div class="head">
+      <div class="title">
+        <span class="fn">{{ channel.label }}</span>
+        <span v-if="channel.mathTag" class="math">{{ channel.mathTag }}</span>
+        <template v-if="store.state?.function === 'CONT' && !props.big">
+          <button
+            class="snd"
+            :class="{ on: soundOn && !audioBlocked, blocked: soundOn && audioBlocked }"
+            :title="
+              soundOn
+                ? audioBlocked
+                  ? 'Audio blocked by the browser — click anywhere to enable'
+                  : 'Continuity tone: on'
+                : 'Continuity tone: muted'
+            "
+            @click="toggleSound"
+          >
+            {{ soundOn ? '◗))' : '◗' }}
+          </button>
+          <input
+            v-model.number="volPct"
+            class="vol"
+            type="range"
+            min="5"
+            max="100"
+            step="5"
+            title="Continuity tone volume"
+            :disabled="!soundOn"
+            @input="onVolume"
+            @change="onVolumeSet"
+          />
+        </template>
+      </div>
+      <div class="tools">
+        <span
+          v-if="stable !== null"
+          class="stable"
+          :class="{ yes: stable }"
           :title="
-            soundOn
-              ? audioBlocked
-                ? 'Audio blocked by the browser — click anywhere to enable'
-                : 'Continuity tone: on'
-              : 'Continuity tone: muted'
+            stable
+              ? 'The last readings agree within the stability tolerance'
+              : 'Reading is still moving'
           "
-          @click="toggleSound"
         >
-          {{ soundOn ? '◗))' : '◗' }}
-        </button>
-        <input
-          v-model.number="volPct"
-          class="vol"
-          type="range"
-          min="5"
-          max="100"
-          step="5"
-          title="Continuity tone volume"
-          :disabled="!soundOn"
-          @input="onVolume"
-          @change="onVolumeSet"
-        />
-      </template>
+          <span class="sdot" />{{ stable ? 'Stable' : 'Settling' }}
+        </span>
+        <template v-if="!props.big">
+          <button
+            class="ghost icon"
+            :class="{ active: !!held }"
+            :title="held ? 'Release hold (H)' : 'Hold the display (H)'"
+            @click="toggleHold"
+          >
+            <UiIcon name="pause" :size="15" />
+          </button>
+          <button class="ghost icon" title="Big digits (B)" @click="bigMode = true">
+            <UiIcon name="expand" :size="15" />
+          </button>
+        </template>
+      </div>
     </div>
-    <div class="value" :class="{ overload: overload && !contOpen, open: contOpen }">
+
+    <div
+      class="value"
+      :class="{ overload: overload && !contOpen, open: contOpen, stale, held: !!held }"
+    >
       <span class="mag">
         <span class="sign">{{ display.sign }}</span>
         <span class="num">{{ display.text }}</span>
       </span>
       <span class="unit">{{ display.unit }}</span>
     </div>
-    <div v-if="stats" class="stats">
-      <div class="stat">
-        <label>min</label>
-        <span class="sv">{{ stats.min.sign }}{{ stats.min.text }} {{ stats.min.unit }}</span>
-      </div>
-      <div class="stat">
-        <label>avg</label>
-        <span class="sv">{{ stats.avg.sign }}{{ stats.avg.text }} {{ stats.avg.unit }}</span>
-      </div>
-      <div class="stat">
-        <label>max</label>
-        <span class="sv">{{ stats.max.sign }}{{ stats.max.text }} {{ stats.max.unit }}</span>
-      </div>
-      <button class="clear-stats" title="Clear min / avg / max" @click="clearStats">↺</button>
-    </div>
+
+    <AnnunciatorStrip />
+
+    <div class="stats"><StatsStrip /></div>
   </div>
 </template>
 
 <style scoped>
 .live {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   height: 100%;
-  text-align: center;
-  gap: 10px;
+  background: var(--readout-bg);
+  border-radius: inherit;
+  transition: box-shadow 0.2s;
 }
-.fn {
+.live.fail {
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+.head {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 0 22px;
+  min-height: 44px;
+}
+.title {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  font-size: 13px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.fn {
+  font-size: 12px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+}
+.math {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tools .active {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+.stable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.sdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint);
+}
+.stable.yes {
+  color: var(--good);
+}
+.stable.yes .sdot {
+  background: var(--good);
+  border-color: var(--good);
+  box-shadow: 0 0 8px var(--good);
 }
 .snd {
-  padding: 2px 10px;
+  padding: 1px 10px;
   font-size: 12px;
   line-height: 1.4;
   border-radius: 999px;
   color: var(--muted);
-  letter-spacing: normal;
 }
 .snd.on {
   color: var(--accent);
@@ -225,7 +293,7 @@ const stats = computed(() => {
   padding: 0;
   border: none;
   border-radius: 2px;
-  background: var(--border);
+  background: var(--border-strong);
   cursor: pointer;
 }
 .vol::-webkit-slider-thumb {
@@ -246,88 +314,94 @@ const stats = computed(() => {
   opacity: 0.4;
   cursor: default;
 }
-.vol:disabled::-webkit-slider-thumb {
-  background: var(--muted);
-}
-.vol:disabled::-moz-range-thumb {
-  background: var(--muted);
-}
+
 .value {
+  flex: 1;
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
+  padding: 18px 16px 22px;
   white-space: nowrap;
+  min-height: 150px;
+  align-content: center;
+  flex-wrap: wrap;
 }
 .mag {
   display: inline-flex;
   align-items: baseline;
-  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
+  font-family: var(--display-font, var(--mono));
   font-weight: var(--display-weight, 800);
-  font-size: 96px;
+  font-size: clamp(56px, 8.2vw, 112px);
   line-height: 1;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
+  transition: color 0.15s;
 }
 /* Fixed-width sign column so digits don't shift when the reading crosses zero. */
 .sign {
   display: inline-block;
-  width: 1ch;
+  width: 0.6ch;
   text-align: center;
 }
 .unit {
-  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
+  font-family: var(--display-font, var(--mono));
   font-weight: var(--display-weight, 800);
-  font-size: 38px;
+  font-size: clamp(24px, 3.2vw, 42px);
   color: var(--accent);
+}
+.live.pass .mag {
+  color: var(--good);
+}
+.live.fail .mag {
+  color: var(--bad);
 }
 .value.overload .mag {
   color: var(--warn);
 }
-.value.open .mag {
-  color: var(--muted);
+.value.open .mag,
+.value.stale .mag {
+  color: var(--faint);
+}
+.value.held .mag {
+  text-decoration: underline 3px var(--warn);
+  text-underline-offset: 10px;
 }
 .stats {
-  display: flex;
-  align-items: flex-end;
-  gap: 28px;
-  margin-top: 6px;
-  padding: 14px 32px 0;
+  position: relative;
+  margin-top: 18px;
+  padding: 14px 16px 14px 22px;
   border-top: 1px solid var(--border);
 }
-.stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
+
+/* Big-digits overlay variant: fill the viewport. */
+.live.big {
+  background: none;
 }
-.stat label {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.sv {
-  font-family: var(--display-font, 'Iosevka', ui-monospace, monospace);
-  font-weight: var(--display-weight, 800);
-  font-size: 15px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
-}
-.clear-stats {
-  width: 22px;
-  height: 22px;
+.live.big .head {
   padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 13px;
-  line-height: 1;
-  color: var(--muted);
 }
-.clear-stats:hover {
-  color: var(--text);
+.live.big .fn {
+  font-size: clamp(14px, 1.6vw, 22px);
+}
+.live.big .value {
+  min-height: 0;
+}
+.live.big .mag {
+  font-size: clamp(80px, 17vw, 380px);
+}
+.live.big .unit {
+  font-size: clamp(32px, 6vw, 130px);
+}
+.live.big .stats {
+  border-top-color: var(--border);
+}
+.live.big .stats :deep(.val) {
+  font-size: clamp(14px, 1.6vw, 24px);
+}
+.live.big :deep(.ann li) {
+  font-size: clamp(11px, 1.1vw, 16px);
+  padding: 6px 10px;
 }
 </style>

@@ -29,13 +29,7 @@ export function formatValue(value: number, unit: string, digits = 5): Formatted 
 
   const sign = value < 0 ? '-' : ''
   const abs = Math.abs(value)
-  let prefix = PREFIXES[4]
-  for (let i = PREFIXES.length - 1; i >= 0; i--) {
-    if (abs >= 10 ** PREFIXES[i].exp) {
-      prefix = PREFIXES[i]
-      break
-    }
-  }
+  const prefix = siPrefixFor(abs)
   const scaled = abs / 10 ** prefix.exp
   return { sign, text: scaled.toPrecision(digits), unit: prefix.sym + unit }
 }
@@ -110,6 +104,64 @@ export function formatReading(
   return { ...f, unit: f.unit + functionUnitSuffix(r.function) }
 }
 
+/** The SI prefix a magnitude would be shown with (the one `formatValue` picks). */
+export function siPrefixFor(abs: number): { exp: number; sym: string } {
+  if (!Number.isFinite(abs) || abs === 0) return PREFIXES[4]
+  for (let i = PREFIXES.length - 1; i >= 0; i--) {
+    if (abs >= 10 ** PREFIXES[i].exp) return PREFIXES[i]
+  }
+  return PREFIXES[4] // below pico: leave unprefixed rather than "0.0001 p"
+}
+
+/**
+ * One SI prefix for a whole chart axis, chosen from the largest magnitude on it, so
+ * ticks read "2.950" against an axis unit of "mV" instead of "0.00295" in bare volts.
+ * `div` is what plotted values are divided by.
+ */
+export function axisScale(maxAbs: number, unit: string): { div: number; unit: string } {
+  const p = siPrefixFor(maxAbs)
+  return { div: 10 ** p.exp, unit: p.sym + unit }
+}
+
+const PARSE_PREFIX: Record<string, number> = {
+  p: -12,
+  n: -9,
+  u: -6,
+  µ: -6,
+  μ: -6,
+  m: -3,
+  k: 3,
+  M: 6,
+  G: 9,
+}
+
+/**
+ * Parse an engineering-notation entry like "2.95m", "4k7", "-3.3", "10 µ", "1e-3"
+ * into a number. Any of `units` written after the value is ignored, so "2.95 mV"
+ * parses as 0.00295 when `units` includes "V". After that only a single SI prefix may
+ * remain — "3 psi" is not misread as pico. Returns null for anything else.
+ */
+export function parseEng(text: string, units: string[] = []): number | null {
+  let t = text.trim().replace(',', '.')
+  for (const u of [...units].sort((a, b) => b.length - a.length)) {
+    if (u && t.endsWith(u)) {
+      t = t.slice(0, -u.length).trim()
+      break
+    }
+  }
+  if (!t) return null
+  // Resistor-style "4k7" (the prefix stands in for the decimal point).
+  const rkm = /^([+-]?\d+)([pnuµμmkMG])(\d+)$/.exec(t)
+  if (rkm) return Number.parseFloat(`${rkm[1]}.${rkm[3]}`) * 10 ** PARSE_PREFIX[rkm[2]]
+  const m = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(\S?)$/.exec(t)
+  if (!m) return null
+  const n = Number.parseFloat(m[1])
+  if (!Number.isFinite(n)) return null
+  if (!m[2]) return n
+  const exp = PARSE_PREFIX[m[2]]
+  return exp === undefined ? null : n * 10 ** exp
+}
+
 /**
  * Compact label for a range button, e.g. 0.2 V -> "200 mV", 1e8 Ω -> "100 MΩ".
  * Voltage ranges stay in volts ("1000 V", not "1 kV") to match the front panel.
@@ -118,4 +170,23 @@ export function formatRangeLabel(value: number, unit: string): string {
   if (unit === 'V' && value >= 1000) return `${value} V`
   const f = formatValue(value, unit, 6)
   return `${Number.parseFloat(f.text)} ${f.unit}`
+}
+
+/** A duration as h:mm:ss (e.g. "1:02:03"; "0:00:42"). */
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const hh = Math.floor(s / 3600)
+  const mm = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  return `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+}
+
+/** Decimals needed to print every multiple of `incr` exactly (0.025 → 3, 0.5 → 1). */
+export function stepDecimals(incr: number): number {
+  if (!Number.isFinite(incr) || incr <= 0) return 3
+  for (let d = 0; d < 10; d++) {
+    const scaled = incr * 10 ** d
+    if (Math.abs(scaled - Math.round(scaled)) < 1e-6 * Math.max(1, scaled)) return d
+  }
+  return 9
 }

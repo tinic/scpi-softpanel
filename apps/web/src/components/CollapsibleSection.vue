@@ -11,7 +11,7 @@ const open = ref(props.defaultOpen)
   <div class="collapsible">
     <button class="head" :aria-expanded="open" @click="open = !open">
       <span class="chev" :class="{ open }">▸</span>
-      <h2>{{ title }}</h2>
+      <h2 class="eyebrow">{{ title }}</h2>
     </button>
     <div v-show="open" class="body"><slot /></div>
   </div>

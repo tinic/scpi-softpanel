@@ -4,13 +4,18 @@ import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import { useMeterStore } from '@/stores/meter'
 import { useChartWindow } from '@/composables/useChartWindow'
-import { useTempUnit } from '@/composables/useTempUnit'
-import { convertTemp, formatValue, tempUnitLabel } from '@/lib/format'
+import { useDisplay } from '@/composables/useDisplay'
+import { useLimits } from '@/composables/useLimits'
+import { cssVar, useTheme } from '@/composables/useTheme'
+import { exportPng, fileStamp, makeTip, placeTip, stepTicks, themedAxis, vLine } from '@/lib/chart'
 
 const store = useMeterStore()
 const { windowed } = useChartWindow()
-const { tempUnit } = useTempUnit()
+const { channel } = useDisplay()
+const { limits } = useLimits()
+const { resolved: theme } = useTheme()
 const el = ref<HTMLDivElement | null>(null)
+const HEIGHT = 300
 
 let plot: uPlot | null = null
 let ro: ResizeObserver | null = null
@@ -21,38 +26,43 @@ interface Bins {
   lo: number
   binWidth: number
   total: number
-  unit: string
   mean: number
   std: number
-  isTemp: boolean
+  /** Axis scale: plotted x = display value / div. */
+  div: number
 }
-const empty = (unit = '', isTemp = false): Bins => ({
+const empty = (): Bins => ({
   centers: [],
   counts: [],
   lo: 0,
   binWidth: 0,
   total: 0,
-  unit,
   mean: NaN,
   std: NaN,
-  isTemp,
+  div: 1,
 })
 let bins: Bins = empty()
+const axisUnit = ref('')
 
-// Bin the current function's finite readings (mixing units across a function switch
-// would be meaningless, so — like the stats strip — only the active function counts).
+// Bin the current function's finite readings in the display unit (mixing units
+// across a function switch would be meaningless, so only the active function counts).
 function computeBins(): Bins {
-  const fn = store.lastReading?.function
-  const isTemp = fn === 'TEMP'
-  const unit = isTemp ? tempUnitLabel(tempUnit.value) : (store.lastReading?.unit ?? '')
+  const fn = store.state?.function
+  const ch = channel.value
   const vals = windowed.value
-    .filter((r) => r.function === fn && Number.isFinite(r.value))
-    .map((r) => (isTemp ? convertTemp(r.value, tempUnit.value) : r.value))
+    .filter((r) => r.function === fn)
+    .map((r) => ch.value(r))
+    .filter((v) => Number.isFinite(v))
   const total = vals.length
-  if (total === 0) return empty(unit, isTemp)
+  if (total === 0) {
+    axisUnit.value = ch.axis(0).unit
+    return empty()
+  }
 
   let min = Math.min(...vals)
   let max = Math.max(...vals)
+  const ax = ch.axis(Math.max(Math.abs(min), Math.abs(max)))
+  axisUnit.value = ax.unit
   const mean = vals.reduce((a, b) => a + b, 0) / total
   const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / total)
   // All-identical readings → a narrow band so a bar is still visible.
@@ -69,8 +79,8 @@ function computeBins(): Bins {
     const idx = Math.min(nBins - 1, Math.max(0, Math.floor((v - min) / binWidth)))
     counts[idx]++
   }
-  const centers = counts.map((_, i) => min + (i + 0.5) * binWidth)
-  return { centers, counts, lo: min, binWidth, total, unit, mean, std, isTemp }
+  const centers = counts.map((_, i) => (min + (i + 0.5) * binWidth) / ax.div)
+  return { centers, counts, lo: min, binWidth, total, mean, std, div: ax.div }
 }
 
 function buildData(): uPlot.AlignedData {
@@ -78,43 +88,31 @@ function buildData(): uPlot.AlignedData {
   return [bins.centers, bins.counts]
 }
 
-// Compact engineering value for axis ticks / tooltip, e.g. "2.85 mV".
-function fmtVal(v: number, digits = 3): string {
-  // Temperature is shown at fixed resolution with no SI prefix (no "m°C").
-  if (bins.isTemp) return `${v.toFixed(1)} ${bins.unit}`
-  const f = formatValue(v, bins.unit, digits)
+const fmt = (v: number) => {
+  const f = channel.value.format(v)
   return `${f.sign}${f.text} ${f.unit}`.trim()
 }
 
 const barsPaths = uPlot.paths.bars!({ align: 0, size: [1, Infinity], gap: 1 })
 
-// Overlay the mean (thick) and ±1σ (thin dashed) lines — the standard DMM histogram
-// statistics markers.
-function statsOverlay(): uPlot.Plugin {
+// Mean (solid) and ±1σ (dashed) — the standard DMM histogram markers — plus limits.
+function overlayPlugin(): uPlot.Plugin {
   return {
     hooks: {
-      draw: (u: uPlot) => {
+      draw: (u) => {
+        const lim = limits.value
+        if (lim.enabled) {
+          const bad = cssVar('--chart-limit')
+          if (lim.lo != null) vLine(u, lim.lo / bins.div, bad, 1.5, [6, 4])
+          if (lim.hi != null) vLine(u, lim.hi / bins.div, bad, 1.5, [6, 4])
+        }
         if (!Number.isFinite(bins.mean)) return
-        const ctx = u.ctx
-        const top = u.bbox.top
-        const bot = u.bbox.top + u.bbox.height
-        const vline = (x: number, color: string, width: number, dash: number[]) => {
-          const px = Math.round(u.valToPos(x, 'x', true))
-          ctx.save()
-          ctx.beginPath()
-          ctx.strokeStyle = color
-          ctx.lineWidth = width
-          ctx.setLineDash(dash)
-          ctx.moveTo(px, top)
-          ctx.lineTo(px, bot)
-          ctx.stroke()
-          ctx.restore()
-        }
+        const meanColor = cssVar('--chart-mean')
         if (bins.std > 0) {
-          vline(bins.mean - bins.std, 'rgba(124,179,255,0.55)', 2, [5, 4])
-          vline(bins.mean + bins.std, 'rgba(124,179,255,0.55)', 2, [5, 4])
+          vLine(u, (bins.mean - bins.std) / bins.div, meanColor, 1.5, [5, 4])
+          vLine(u, (bins.mean + bins.std) / bins.div, meanColor, 1.5, [5, 4])
         }
-        vline(bins.mean, '#7cb3ff', 4, [])
+        vLine(u, bins.mean / bins.div, meanColor, 2.5)
       },
     },
   }
@@ -122,42 +120,25 @@ function statsOverlay(): uPlot.Plugin {
 
 // Hover tooltip: the bin's value range, its count, and share of the total.
 function tooltipPlugin(): uPlot.Plugin {
-  let tip: HTMLDivElement
-  let line1: HTMLSpanElement
-  let line2: HTMLSpanElement
+  let t: ReturnType<typeof makeTip>
   return {
     hooks: {
-      init: (u: uPlot) => {
-        tip = document.createElement('div')
-        tip.className = 'tip'
-        line1 = document.createElement('span')
-        line1.className = 'tip-v'
-        line2 = document.createElement('span')
-        line2.className = 'tip-t'
-        tip.append(line1, line2)
-        tip.style.display = 'none'
-        u.over.appendChild(tip)
+      init: (u) => {
+        t = makeTip(u)
       },
-      setCursor: (u: uPlot) => {
+      setCursor: (u) => {
         const idx = u.cursor.idx
         if (idx == null || idx >= bins.counts.length) {
-          tip.style.display = 'none'
+          t.tip.style.display = 'none'
           return
         }
         const lo = bins.lo + idx * bins.binWidth
-        const hi = lo + bins.binWidth
         const count = bins.counts[idx]
         const pct = bins.total ? (count / bins.total) * 100 : 0
-        line1.textContent = `${fmtVal(lo)} – ${fmtVal(hi)}`
-        line2.textContent = `${count} (${pct.toFixed(1)}%)`
-        tip.style.display = 'flex'
-        const left = u.cursor.left ?? 0
-        const top = u.cursor.top ?? 0
-        const w = u.over.clientWidth
-        const tx = left < 80 ? '0' : left > w - 80 ? '-100%' : '-50%'
-        tip.style.left = `${left}px`
-        tip.style.top = `${top}px`
-        tip.style.transform = `translate(${tx}, calc(-100% - 12px))`
+        t.a.textContent = `${fmt(lo)} – ${fmt(lo + bins.binWidth)}`
+        t.b.textContent = `${count} (${pct.toFixed(1)}%)`
+        t.tip.style.display = 'flex'
+        placeTip(u, t.tip)
       },
     },
   }
@@ -166,68 +147,97 @@ function tooltipPlugin(): uPlot.Plugin {
 function options(width: number): uPlot.Options {
   return {
     width,
-    height: 280,
+    height: HEIGHT,
     scales: { x: { time: false }, y: { range: (_u, _min, max) => [0, Math.max(1, max)] } },
     axes: [
-      {
-        stroke: '#8b949e',
-        grid: { stroke: '#21262d', width: 1 },
-        ticks: { stroke: '#30363d' },
-        font: '11px ui-monospace, monospace',
-        values: (_u, splits) => splits.map((v) => fmtVal(v)),
-      },
-      {
-        stroke: '#8b949e',
-        grid: { stroke: '#21262d', width: 1 },
-        ticks: { stroke: '#30363d' },
-        font: '11px ui-monospace, monospace',
+      themedAxis({ values: stepTicks }),
+      themedAxis({
         size: 48,
         values: (_u, splits) => splits.map((v) => (Number.isInteger(v) ? String(v) : '')),
-      },
+      }),
     ],
     series: [
       {},
       {
         label: 'count',
         paths: barsPaths,
-        stroke: '#4ea1ff',
-        fill: 'rgba(78,161,255,0.35)',
+        stroke: cssVar('--chart-line'),
+        fill: cssVar('--chart-fill'),
         width: 1,
         points: { show: false },
       },
     ],
     cursor: { drag: { x: false, y: false }, points: { show: false } },
     legend: { show: false },
-    plugins: [statsOverlay(), tooltipPlugin()],
+    plugins: [overlayPlugin(), tooltipPlugin()],
   }
 }
 
-onMounted(() => {
+function create(): void {
   if (!el.value) return
-  const width = el.value.clientWidth || 600
-  plot = new uPlot(options(width), buildData(), el.value)
+  plot?.destroy()
+  plot = new uPlot(options(el.value.clientWidth || 600), buildData(), el.value)
+}
+
+onMounted(() => {
+  create()
   ro = new ResizeObserver(() => {
     const w = el.value?.clientWidth ?? 0
-    if (plot && w > 0) plot.setSize({ width: w, height: 280 })
+    if (plot && w > 0) plot.setSize({ width: w, height: HEIGHT })
   })
-  ro.observe(el.value)
+  ro.observe(el.value!)
 })
 
-watch([windowed, tempUnit], () => plot?.setData(buildData()))
+watch([windowed, channel], () => plot?.setData(buildData()))
+watch(limits, () => plot?.redraw(), { deep: true })
+watch(theme, create)
 
 onBeforeUnmount(() => {
   ro?.disconnect()
   plot?.destroy()
 })
+
+function exportImage(): void {
+  if (!plot) return
+  const now = new Date()
+  const sd = Number.isFinite(bins.std) ? ` · mean ${fmt(bins.mean)} · σ ${fmt(bins.std)}` : ''
+  exportPng(
+    plot,
+    `${channel.value.label} — histogram (${axisUnit.value})`,
+    `${bins.total} readings${sd} · ${now.toLocaleString()} · SCPI SoftPanel`,
+    `scpi-histogram-${fileStamp(now)}.png`,
+  )
+}
+defineExpose({ exportImage })
 </script>
 
 <template>
-  <div ref="el" class="chart" />
+  <div class="hist">
+    <span v-if="axisUnit" class="unit-tag mono">{{ axisUnit }}</span>
+    <div ref="el" class="chart" />
+  </div>
 </template>
 
 <style scoped>
+.hist {
+  position: relative;
+}
+.unit-tag {
+  position: absolute;
+  right: 8px;
+  top: 2px;
+  z-index: 4;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
 .chart {
   width: 100%;
+  padding-top: 22px;
 }
 .chart :deep(.tip) {
   position: absolute;
@@ -238,13 +248,13 @@ onBeforeUnmount(() => {
   gap: 1px;
   padding: 5px 9px;
   border-radius: 7px;
-  background: rgba(13, 17, 23, 0.95);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   white-space: nowrap;
 }
 .chart :deep(.tip-v) {
-  font-family: 'Iosevka', ui-monospace, monospace;
+  font-family: var(--mono);
   font-weight: 800;
   font-size: 13px;
   color: var(--text);

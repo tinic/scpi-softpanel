@@ -2,6 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useMeterStore } from '@/stores/meter'
 import { useDisplayFont, type DisplayFont } from '@/composables/useDisplayFont'
+import { useTheme, type ThemePref } from '@/composables/useTheme'
+import { STABLE_TOLERANCES, useStats } from '@/composables/useStats'
+import UiIcon from './UiIcon.vue'
 
 const store = useMeterStore()
 const open = ref(false)
@@ -11,6 +14,14 @@ const saving = ref(false)
 
 const { displayFont, setDisplayFont, fonts } = useDisplayFont()
 const fontKeys = Object.keys(fonts) as DisplayFont[]
+const { pref: themePref, setTheme } = useTheme()
+const THEMES: { id: ThemePref; label: string }[] = [
+  { id: 'system', label: 'System' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+]
+const { stableTolPct, setStableTol } = useStats()
+
 const previewStyle = computed(() => ({
   fontFamily: fonts[displayFont.value].stack,
   fontWeight: String(fonts[displayFont.value].weight),
@@ -59,12 +70,16 @@ watch(open, (isOpen) => {
 </script>
 
 <template>
-  <button class="gear" title="Instrument settings" @click="show">⚙</button>
+  <button class="ghost icon" title="Settings" @click="show">
+    <UiIcon name="gear" :size="17" />
+  </button>
 
   <div v-if="open" class="backdrop" @click.self="open = false">
     <div class="dialog">
-      <h2>Instrument</h2>
-      <p class="hint">Address of the SCPI instrument (raw socket).</p>
+      <h2>Settings</h2>
+      <p class="hint">
+        Instrument address (raw SCPI socket). Display preferences apply immediately.
+      </p>
       <label>
         Host
         <input v-model="host" type="text" placeholder="e.g. 192.168.1.50" spellcheck="false" />
@@ -74,12 +89,36 @@ watch(open, (isOpen) => {
         <input v-model.number="port" type="number" min="1" max="65535" />
       </label>
 
+      <span class="seclabel">Theme</span>
+      <div class="segmented full">
+        <button
+          v-for="t in THEMES"
+          :key="t.id"
+          :class="{ on: themePref === t.id }"
+          @click="setTheme(t.id)"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+
+      <span class="seclabel">Stable when the last 8 readings agree within</span>
+      <div class="segmented full">
+        <button
+          v-for="t in STABLE_TOLERANCES"
+          :key="t"
+          :class="{ on: stableTolPct === t }"
+          @click="setStableTol(t)"
+        >
+          ±{{ t }}%
+        </button>
+      </div>
+
       <span class="seclabel">Display font</span>
-      <div class="fontsel">
+      <div class="segmented full">
         <button
           v-for="f in fontKeys"
           :key="f"
-          :class="{ primary: displayFont === f }"
+          :class="{ on: displayFont === f }"
           @click="setDisplayFont(f)"
         >
           {{ fonts[f].label }}
@@ -98,36 +137,30 @@ watch(open, (isOpen) => {
 </template>
 
 <style scoped>
-.gear {
-  padding: 4px 10px;
-  font-size: 15px;
-  line-height: 1;
-  border-radius: 999px;
-  color: var(--muted);
-}
-.gear:hover {
-  color: var(--text);
-}
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: 16px;
 }
 .dialog {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   padding: 22px;
-  width: 340px;
-  max-width: calc(100vw - 32px);
+  width: 400px;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 .dialog h2 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: 16px;
 }
 .hint {
   margin: 0 0 16px;
@@ -150,27 +183,24 @@ watch(open, (isOpen) => {
   display: block;
   font-size: 12px;
   color: var(--muted);
-  margin-bottom: 7px;
+  margin: 16px 0 7px;
 }
-.fontsel {
+.segmented.full {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
-.fontsel button {
-  padding: 5px 11px;
-  font-size: 12px;
+.segmented.full button {
+  flex: 1;
 }
 .preview {
-  margin-top: 12px;
+  margin-top: 10px;
   padding: 10px;
   text-align: center;
   font-size: 30px;
   line-height: 1.1;
   color: var(--text);
-  background: var(--bg);
+  background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   overflow: hidden;
   font-variant-numeric: tabular-nums;
@@ -180,6 +210,6 @@ watch(open, (isOpen) => {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 </style>

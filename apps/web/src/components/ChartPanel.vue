@@ -1,132 +1,90 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import TrendChart from './TrendChart.vue'
 import HistogramChart from './HistogramChart.vue'
 import AnalogMeter from './AnalogMeter.vue'
+import SessionsView from './SessionsView.vue'
+import UiIcon from './UiIcon.vue'
 import { useChartWindow } from '@/composables/useChartWindow'
+import { CHART_TABS, useUi } from '@/composables/useUi'
 
-type Tab = 'trend' | 'histogram' | 'meter'
-const open = ref(true)
-const tab = ref<Tab>('trend')
 const { clear } = useChartWindow()
+const { chartTab: tab, setChartTab } = useUi()
 
-// Selecting a tab also expands the panel if it was collapsed.
-function select(t: Tab): void {
-  tab.value = t
-  open.value = true
+const trend = ref<InstanceType<typeof TrendChart> | null>(null)
+const hist = ref<InstanceType<typeof HistogramChart> | null>(null)
+const sessions = ref<InstanceType<typeof SessionsView> | null>(null)
+
+const exportable = computed(() => tab.value !== 'meter')
+function exportImage(): void {
+  if (tab.value === 'trend') trend.value?.exportImage()
+  else if (tab.value === 'histogram') hist.value?.exportImage()
+  else if (tab.value === 'sessions') sessions.value?.exportImage()
 }
+const live = computed(() => tab.value !== 'sessions')
 </script>
 
 <template>
   <div class="chart-panel">
     <div class="head">
-      <button
-        class="chev-btn"
-        :aria-expanded="open"
-        title="Collapse / expand"
-        @click="open = !open"
-      >
-        <span class="chev" :class="{ open }">▸</span>
-      </button>
       <div class="tabs" role="tablist">
         <button
+          v-for="(t, i) in CHART_TABS"
+          :key="t.id"
           class="tab"
           role="tab"
-          :aria-selected="tab === 'trend'"
-          :class="{ active: tab === 'trend' }"
-          @click="select('trend')"
+          :aria-selected="tab === t.id"
+          :class="{ active: tab === t.id }"
+          :title="`${t.label} (${i + 1})`"
+          @click="setChartTab(t.id)"
         >
-          Trend
-        </button>
-        <button
-          class="tab"
-          role="tab"
-          :aria-selected="tab === 'histogram'"
-          :class="{ active: tab === 'histogram' }"
-          @click="select('histogram')"
-        >
-          Histogram
-        </button>
-        <button
-          class="tab"
-          role="tab"
-          :aria-selected="tab === 'meter'"
-          :class="{ active: tab === 'meter' }"
-          @click="select('meter')"
-        >
-          Meter
+          {{ t.label }}
         </button>
       </div>
-      <a
-        class="dl"
-        href="/api/readings.csv"
-        download="scpi-readings.csv"
-        title="Download readings as CSV"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="15"
-          height="15"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
+      <div class="actions">
+        <button v-if="exportable" class="ghost icon" title="Save chart as PNG" @click="exportImage">
+          <UiIcon name="image" :size="15" />
+        </button>
+        <a
+          v-if="live"
+          class="icon-link"
+          href="/api/readings.csv"
+          download="scpi-readings.csv"
+          title="Download the live buffer as CSV"
         >
-          <path d="M12 3v11" />
-          <path d="M8 11l4 4 4-4" />
-          <path d="M5 20h14" />
-        </svg>
-      </a>
-      <button class="clear" title="Clear data" @click="clear">↺</button>
+          <UiIcon name="download" :size="15" />
+        </a>
+        <button v-if="live" class="ghost icon" title="Clear chart data" @click="clear">
+          <UiIcon name="reset" :size="15" />
+        </button>
+      </div>
     </div>
-    <div v-show="open" class="body">
-      <TrendChart v-show="tab === 'trend'" />
-      <HistogramChart v-show="tab === 'histogram'" />
+    <div class="body">
+      <TrendChart v-show="tab === 'trend'" ref="trend" />
+      <HistogramChart v-show="tab === 'histogram'" ref="hist" />
       <AnalogMeter v-show="tab === 'meter'" />
+      <SessionsView v-show="tab === 'sessions'" ref="sessions" />
     </div>
   </div>
 </template>
 
 <style scoped>
+.chart-panel {
+  padding: 8px 16px 16px;
+}
 .head {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.chev-btn {
-  background: none;
-  border: none;
-  padding: 6px 9px;
-  margin: -4px -5px; /* keep alignment despite the larger hit area */
-  cursor: pointer;
-  color: inherit;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 6px;
-}
-.chev-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.chev {
-  display: inline-block;
-  font-size: 15px;
-  color: var(--muted);
-  transition: transform 0.15s ease;
-}
-.chev.open {
-  transform: rotate(90deg);
-}
-.chev-btn:hover .chev {
-  color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  overflow-x: auto;
 }
 .tab {
-  padding: 4px 12px 6px;
+  padding: 10px 12px 9px;
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
@@ -134,48 +92,48 @@ function select(t: Tab): void {
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 0;
-  cursor: pointer;
+  margin-bottom: -1px;
+  white-space: nowrap;
 }
-.tab:hover {
+.tab:hover:not(:disabled) {
   color: var(--text);
+  background: none;
 }
 .tab.active {
-  color: var(--accent);
+  color: var(--text);
   border-bottom-color: var(--accent);
 }
-.dl {
+.actions {
   margin-left: auto;
-  width: 28px;
-  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.icon-link {
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
-  opacity: 0.75;
 }
-.dl:hover {
+.icon-link:hover {
   color: var(--text);
-  opacity: 1;
-}
-.clear {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--muted);
-  opacity: 0.7;
-}
-.clear:hover {
-  color: var(--text);
-  opacity: 1;
+  background: var(--panel-3);
 }
 .body {
   margin-top: 14px;
+}
+@media (max-width: 640px) {
+  .chart-panel {
+    padding: 4px 10px 12px;
+  }
+  .tab {
+    padding: 10px 7px 9px;
+  }
+  .head {
+    gap: 4px;
+  }
 }
 </style>
