@@ -10,10 +10,18 @@ It ships two ways from one codebase:
   instrument.
 - **Headless server** for an always-on LAN host — serves the same UI to any browser.
 
-![SCPI SoftPanel reading a live SDM3045X](docs/screenshot.png)
+![SCPI SoftPanel: live DC-voltage readout with annunciators, statistics, trend chart and control rail](docs/screenshot.png)
 
 Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
-controls, tabbed trend & histogram charts, a raw-SCPI console, and a continuity tone.
+controls, tabbed trend, histogram and analog-meter views, recording to disk, a raw-SCPI
+console, and a continuity tone.
+
+![The Meter tab: a modeled analog panel meter with a center-zero mVDC scale](docs/meter.png)
+
+The **Meter** tab draws a classic analog panel meter. The needle moves like a real
+taut-band movement, with a little overshoot, and bounces off the pegs on overload. The
+scale follows the instrument's range, and a red band above it marks the min/max of the
+last 15 s. With Δ Tare engaged it works as a null meter.
 
 ## Features
 
