@@ -15,6 +15,32 @@ It ships two ways from one codebase:
 Live readout, a front-panel-style function keypad, range / NPLC / continuity-threshold
 controls, tabbed trend & histogram charts, a raw-SCPI console, and a continuity tone.
 
+## Features
+
+- **Readout built like an instrument.** Big digits with DMM-style annunciators (AUTO,
+  range, NPLC, REL, MATH, HOLD, PASS/HI/LO, REC). A _stable_ indicator lights when the
+  last 8 readings agree within a set tolerance. A full-screen **big digits** mode lets
+  you read the bench from across the room.
+- **Statistics.** N, mean, σ (with ppm of mean), min, max and peak-to-peak since the last
+  reset.
+- **Math channel**, set per function: **mX+b** with a custom unit (a shunt read as amps,
+  a transducer read as psi), **% deviation** from a nominal value, **dB** against a
+  reference voltage, and **dBm** into 50 / 75 / 600 Ω or any impedance.
+- **Limits.** Low and high bounds (or ± % around the current reading). The readout turns
+  green or red, and pass / low / high counters show the yield. You can get a beep and a
+  desktop notification on a fail.
+- **Charts** in the display unit (axis in mVDC, kΩ, dBm, …). Drag to zoom (the zoom holds
+  while data streams in). Click a point to measure Δt / Δvalue from it. The trend shows
+  limit bands and markers. Charts export to PNG.
+- **Recording sessions to disk** that outlive the live buffer: named, optionally timed
+  (1 min … 24 h), with markers. A **Sessions** tab lists, views, overlays two runs by
+  elapsed time, downloads CSV and deletes.
+- **Keyboard control** like a front panel: `V` `A` `R` `C` `F` `O` `D` `T` pick the
+  function (Shift for the AC / 4-wire / period variant), `↑` `↓` step the range, `Space`
+  runs or stops, `H` holds, `Z` tares, `K` drops a marker, `B` shows big digits. Press `?`
+  for the full list.
+- Light and dark themes (or follow the system), and a layout that works on a phone.
+
 ## Download
 
 Desktop app — these links always point at the latest release:
@@ -114,6 +140,15 @@ pnpm install
 pnpm dev          # http://localhost:5173
 ```
 
+No meter on the network? `scripts/sim-meter.py` is a stdlib-only SDM3045X stand-in.
+It speaks the SCPI subset the core uses and produces a drifting, noisy signal per
+function:
+
+```bash
+python3 scripts/sim-meter.py --port 5025 &
+cd rust && METER_HOST=127.0.0.1 cargo run -p scpi-server
+```
+
 For the desktop app (needs the Tauri prerequisites for your OS):
 
 ```bash
@@ -194,7 +229,14 @@ already has the slots to plug in real signing secrets later.
 The meter target is settable at runtime from the UI (the gear → Instrument), persisted
 per-user. Defaults come from the environment (see `.env.example`): `METER_HOST`,
 `METER_PORT` (5025), `METER_TIMEOUT_MS`, `POLL_INTERVAL_MS`, `POLL_AUTOSTART`,
-`RING_CAPACITY`, `PORT`, `HOST`, `WEB_DIST`, `CONFIG_PATH`.
+`RING_CAPACITY`, `PORT`, `HOST`, `WEB_DIST`, `CONFIG_PATH`, `SESSIONS_DIR`.
+
+Recorded sessions go to `SESSIONS_DIR`. The default is a `sessions/` folder next to
+`CONFIG_PATH`, so the Docker image writes them to `/data/sessions` in the `scpi-data`
+volume. Without `CONFIG_PATH`, the default is `./sessions`. The desktop app writes them
+to the OS data directory (for example `~/.local/share/com.tinic.scpisoftpanel/sessions`).
+Each session is a CSV with the same columns as the live export, plus a JSON sidecar that
+holds the name, times and markers.
 
 ## Checks
 
